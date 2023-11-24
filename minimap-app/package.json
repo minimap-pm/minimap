@@ -8,7 +8,7 @@
 		"tauri:icon": "tauri icon -o build/icons ./www-src/img/ico.png",
 		"dev": "npx serve -l 3891 --no-port-switching -n -S build",
 		"format": "prettier --write .",
-		"lint": "prettier --lint .",
+		"lint": "prettier --check .",
 		"build": "set MM_DEVELOPMENT=1&&set MM_LOCAL=1&&gulp",
 		"build:prod": "gulp",
 		"build:prod:local": "set MM_LOCAL=1&&gulp",

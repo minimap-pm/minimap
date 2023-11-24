@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[tauri::command]
-fn hello() -> String {
+async fn hello() -> String {
 	"Hello World!".to_string()
 }
 
