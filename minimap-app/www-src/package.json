@@ -3,6 +3,7 @@
 	"private": true,
 	"version": "0.0.0",
 	"dependencies": {
+		"@tauri-apps/api": "1.5.1",
 		"s-array": "0.4.10",
 		"s-js": "0.4.9",
 		"s-storage": "0.1.4",

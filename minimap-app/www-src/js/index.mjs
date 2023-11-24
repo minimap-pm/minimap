@@ -8,6 +8,8 @@ import systemTheme from 'minimap/js/util/s-theme.mjs';
 import Root from 'minimap/js/module/Root.mjs';
 import ErrorView from 'minimap/js/module/ErrorView.mjs';
 
+import { invoke } from '@tauri-apps/api/tauri';
+
 import './reset.css';
 import './global.css';
 import './theme.css';
@@ -55,4 +57,7 @@ S.root(() => {
 
 	// Attach!
 	document.body.prepend(<Root view={currentView} fadeTime={150} />);
+
+	// TODO DEBUG: test tauri API
+	invoke('hello').then(r => console.log('hello():', r));
 });
