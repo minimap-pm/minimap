@@ -1,0 +1,49 @@
+.root {
+	border: 1px solid var(--mm-border);
+	padding: 1rem;
+	display: flex;
+	flex-direction: column;
+	max-width: 35rem;
+	min-width: 30rem;
+	width: 35vw;
+	height: auto;
+	max-height: 35rem;
+}
+
+.root > * {
+	margin-bottom: 1rem;
+}
+
+.root > *:last-child {
+	margin-bottom: 0;
+}
+
+.root > h1 {
+	text-transform: uppercase;
+	font-weight: 800;
+	line-height: 1.3rem;
+	font-size: 1.3rem;
+}
+
+.root > h1 > * {
+	vertical-align: middle;
+}
+
+/* the context box */
+.root > pre {
+	padding: 1rem;
+	padding-bottom: 0;
+	overflow: auto;
+	height: auto;
+	min-height: 7rem;
+	white-space: pre-wrap;
+	box-sizing: border-box;
+}
+
+.icon {
+	height: 1.3rem;
+	width: 1.3rem;
+	display: inline-block;
+	fill: var(--mm-text);
+	padding-right: 0.5rem;
+}

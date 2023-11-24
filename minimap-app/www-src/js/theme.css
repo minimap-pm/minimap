@@ -1,0 +1,141 @@
+/*
+	Some notes on themes:
+
+	- <APP>-select-bg should have `FE` appended as its
+	  alpha value as the default opacity for select
+	  is not 1 and otherwise causes weird display issues,
+	  but a full alpha (FF) is - for whatever reason - not
+	  allowed in several browsers. FE is the next closest
+	  option.
+*/
+@meta {
+	priority: -25;
+}
+
+@global body.mm.theme.dark {
+	--mm-accent: #ff0043;
+	--mm-text: white;
+	--mm-text-dim: #999999;
+	--mm-bg: #000000;
+	--mm-border: white;
+	--mm-select-bg: #ff0043fe;
+}
+
+@global body.mm.theme.light {
+	--mm-accent: #ff0000;
+	--mm-text: #000000;
+	--mm-text-dim: #777777;
+	--mm-bg: white;
+	--mm-border: #000000;
+	--mm-select: #000000;
+	--mm-select-bg: #ff0000fe;
+}
+
+@global body.mm.theme.cyberpunk {
+	--mm-accent: #ff005e;
+	--mm-text: #000000;
+	--mm-text-dim: #6b3f07;
+	--mm-bg: #ffbc00;
+	--mm-border: #000000;
+	--mm-select-bg: #ff005efe;
+}
+
+@global body.mm.theme.interference {
+	--mm-accent: #ff00ec;
+	--mm-text: white;
+	--mm-text-dim: #55ff81;
+	--mm-bg: #2c2d2d;
+	--mm-border: white;
+	--mm-select-bg: #ff00ecfe;
+}
+
+@global body.mm.theme.chocohoney {
+	--mm-accent: #ff8100;
+	--mm-text: #ffc800;
+	--mm-text-dim: #584b1b;
+	--mm-bg: #1b0e06;
+	--mm-border: #a4620f;
+	--mm-select-bg: #ffc800fe;
+}
+
+@global body.mm.theme.vt520 {
+	--mm-accent: #ff7600;
+	--mm-text: #ff7600;
+	--mm-text-dim: #ff7600;
+	--mm-bg: #0c0500;
+	--mm-border: #ff7600;
+	--mm-invert-bg: var(--mm-bg);
+	--mm-invert: var(--mm-text);
+	--mm-image-filter: sepia(100%) saturate(400%) brightness(80%) contrast(150%)
+		hue-rotate(-6deg);
+	--mm-select-bg: #ff7600fe;
+	--mm-select: #0c0500;
+}
+
+@global body.mm.theme.blueprint {
+	--mm-accent: #ffffff;
+	--mm-text: #ffffff;
+	--mm-text-dim: #ffffff;
+	--mm-bg: #05050e;
+	--mm-border: #ffffff;
+	--mm-select-bg: #fffffffe;
+}
+
+@global body.mm.theme.nether {
+	--mm-accent: #ffc800;
+	--mm-text: #ff4700;
+	--mm-text-dim: #6d0909;
+	--mm-bg: #100101;
+	--mm-border: #ff0000;
+	--mm-select-bg: #ffc800fe;
+}
+
+@global body.mm.theme.outrun {
+	--mm-accent: #ff00ec;
+	--mm-text: #00ffc4;
+	--mm-text-dim: #ab02d6;
+	--mm-bg: #1f0e40;
+	--mm-border: #ff00bc;
+	--mm-select-bg: #ff00ecfe;
+}
+
+@global body.mm.theme.nuclear {
+	--mm-accent: #86ff00;
+	--mm-text: #86ff00;
+	--mm-text-dim: #86ff00;
+	--mm-bg: #02090c;
+	--mm-border: #86ff00;
+	--mm-invert-bg: #040e12;
+	--mm-invert: #86ff00;
+	--mm-select-bg: #86ff00fe;
+	--mm-select: #02090c;
+}
+
+@global body.mm.theme.blood {
+	--mm-accent: #ffffff;
+	--mm-text: #000000;
+	--mm-text-dim: #220000;
+	--mm-bg: #ff0000;
+	--mm-border: #000000;
+	--mm-select-bg: #fffffffe;
+	--mm-select: #000000;
+}
+
+@global body.mm.theme.sky {
+	--mm-accent: #ffffff;
+	--mm-text: #000000;
+	--mm-text-dim: #06474a;
+	--mm-bg: #3ee4ff;
+	--mm-border: #000000;
+	--mm-select-bg: #fffffffe;
+	--mm-select: #000000;
+}
+
+@global body.mm.theme.peppermint {
+	--mm-accent: #ef233c;
+	--mm-text: #d8f3dc;
+	--mm-text-dim: #95d5b2;
+	--mm-bg: #081c15;
+	--mm-border: #52b788;
+	--mm-select-bg: #ef233cfe;
+}

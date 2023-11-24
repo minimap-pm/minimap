@@ -1,0 +1,12 @@
+{
+	"name": "minimap",
+	"private": true,
+	"version": "0.0.0",
+	"dependencies": {
+		"s-array": "0.4.10",
+		"s-js": "0.4.9",
+		"s-storage": "0.1.4",
+		"surplus": "0.5.3",
+		"surplus-mixin-data": "0.5.0"
+	}
+}

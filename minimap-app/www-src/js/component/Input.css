@@ -1,0 +1,23 @@
+.root {
+	background-color: var(--mm-bg);
+	border: 1px solid var(--mm-border);
+	color: var(--mm-text);
+	padding: 0.5rem;
+	display: block;
+	width: 100%;
+	box-sizing: border-box;
+	border-radius: 0.25rem;
+}
+
+.root::placeholder {
+	color: var(--mm-text-dim);
+}
+
+.root[disabled] {
+	color: var(--mm-text-dim);
+}
+
+.invalid {
+	color: var(--mm-accent);
+	border-color: var(--mm-accent);
+}

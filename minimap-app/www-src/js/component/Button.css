@@ -1,0 +1,37 @@
+.root {
+	border: 0;
+	background-color: var(--mm-text);
+	box-sizing: border-box;
+	display: flex;
+	padding: 0.5rem;
+	border-radius: 0.25rem;
+	width: 100%;
+	font-weight: 700;
+	cursor: pointer;
+	color: var(--mm-bg);
+	text-transform: uppercase;
+	justify-content: center;
+}
+
+.root:hover {
+	background-color: var(--mm-invert-bg, var(--mm-accent));
+	color: var(--mm-invert, var(--mm-text));
+}
+
+.root[disabled],
+.root[disabled]:hover,
+.disabled,
+.disabled:hover {
+	cursor: not-allowed;
+	background-color: var(--mm-text-dim);
+	color: var(--mm-bg);
+}
+
+.link {
+	align-items: center;
+}
+
+.link,
+.link a {
+	text-decoration: none;
+}
