@@ -1652,7 +1652,7 @@ name = "minimap-core"
 version = "0.1.0"
 dependencies = [
  "git2",
- "hex",
+ "indexmap 2.1.0",
  "rusty-hook",
  "sha2",
  "thiserror",
