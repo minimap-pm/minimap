@@ -7,14 +7,14 @@
 //! struct.
 #![deny(missing_docs, unsafe_code)]
 
-pub(crate) mod workspace;
+pub(crate) mod remote;
 
 #[cfg(feature = "git")]
-pub use workspace::git::*;
-pub use workspace::memory::*;
+pub use remote::git::*;
+pub use remote::memory::*;
 
 use indexmap::{IndexMap, IndexSet};
-use std::hash::Hash;
+use std::{hash::Hash, marker::PhantomData};
 
 /// The error type for all Minimap operations.
 #[derive(Debug, thiserror::Error)]
@@ -57,15 +57,10 @@ pub enum Error {
 /// The result type for all Minimap operations.
 pub type Result<T> = ::std::result::Result<T, Error>;
 
-/// A Minimap workspace holds all project tickets, assets, and other data.
-/// It is routinely synchronized with a local clone that Minimap manages
-/// itself - thus, it is not necessary nor recommended to manually clone
-/// workspaces yourself.
-///
-/// Workspaces work within the context of a user, which is already established
-/// at te time Workspace is created. This should include a name and email address.
-#[allow(clippy::type_complexity)]
-pub trait Workspace<'a>: Sized
+/// Minimap remotes are implementations of datastores,
+/// each implementing primitive operations on collections
+/// of records.
+pub trait Remote<'a>: Sized
 where
 	Self: 'a,
 {
@@ -136,6 +131,7 @@ where
 	/// the new record adding the item, and `removed_record` is the record
 	/// from when the item was removed (or `None` if the item did not exist).
 	/// The outer `Result` is an error if some operational error occurred.
+	#[allow(clippy::type_complexity)]
 	fn set_add(
 		&'a self,
 		collection: &str,
@@ -153,6 +149,7 @@ where
 	/// from when the item was added. If the item did not exist, returns
 	/// `Option(removed_record)`. The outer `Result` is an error if some
 	/// operational error occurred.
+	#[allow(clippy::type_complexity)]
 	fn set_del(
 		&'a self,
 		collection: &str,
@@ -200,35 +197,76 @@ where
 
 		Ok(r)
 	}
+}
+
+/// A Minimap workspace holds all project tickets, assets, and other data.
+/// It is routinely synchronized with a local clone that Minimap manages
+/// itself - thus, it is not necessary nor recommended to manually clone
+/// workspaces yourself.
+///
+/// Workspaces work within the context of a user, which is already established
+/// at te time Workspace is created. This should include a name and email address.
+pub struct Workspace<'a, R: Remote<'a>>
+where
+	Self: 'a,
+{
+	remote: R,
+	_phantom: PhantomData<&'a ()>,
+}
+
+impl<'a, R: Remote<'a>> Workspace<'a, R>
+where
+	Self: 'a,
+{
+	/// Opens a workspace given the remote.
+	pub fn open(remote: R) -> Self {
+		Self {
+			remote,
+			_phantom: PhantomData,
+		}
+	}
+
+	/// Returns a reference to the remote.
+	#[inline]
+	pub fn remote(&'a self) -> &'a R {
+		&self.remote
+	}
 
 	/// Gets the name of the workspace
-	fn name(&'a self) -> Result<Option<Self::Record>> {
-		self.walk("meta/workspace/name")?.next().transpose()
+	pub fn name(&'a self) -> Result<Option<R::Record>> {
+		self.remote.walk("meta/workspace/name")?.next().transpose()
 	}
 
 	/// Sets the name of the workspace
-	fn set_name(&'a self, name: &str) -> Result<Self::Record> {
-		self.record_builder("meta/workspace/name").commit(name)
+	pub fn set_name(&'a self, name: &str) -> Result<R::Record> {
+		self.remote
+			.record_builder("meta/workspace/name")
+			.commit(name)
 	}
 
 	/// Gets the description of the workspace
-	fn description(&'a self) -> Result<Option<Self::Record>> {
-		self.walk("meta/workspace/description")?.next().transpose()
+	pub fn description(&'a self) -> Result<Option<R::Record>> {
+		self.remote
+			.walk("meta/workspace/description")?
+			.next()
+			.transpose()
 	}
 
 	/// Sets the description of the workspace
-	fn set_description(&'a self, description: &str) -> Result<Self::Record> {
-		self.record_builder("meta/workspace/description")
+	pub fn set_description(&'a self, description: &str) -> Result<R::Record> {
+		self.remote
+			.record_builder("meta/workspace/description")
 			.commit(description)
 	}
 
 	/// Returns a project given its slug.
-	fn project(&'a self, slug: &str) -> Result<Project<'a, Self>> {
-		self.set_find("meta/projects", slug)?
+	pub fn project(&'a self, slug: &str) -> Result<Project<'a, R>> {
+		self.remote
+			.set_find("meta/projects", slug)?
 			.map_err(|_| Error::NotFound("meta/projects".to_string(), slug.to_string()))?;
 
 		Ok(Project {
-			workspace: self,
+			remote: &self.remote,
 			slug: slug.to_string(),
 			meta_path: format!("meta/project/{}", slug),
 			path: format!("project/{}", slug),
@@ -238,14 +276,15 @@ where
 	/// Creates a project with the given slug.
 	/// If the project already exists, returns `Ok(Err(record))` with the
 	/// set record of the existing project.
-	fn create_project(
+	pub fn create_project(
 		&'a self,
 		slug: &str,
-	) -> Result<::std::result::Result<Project<'a, Self>, Self::Record>> {
-		self.set_add("meta/projects", slug)
+	) -> Result<::std::result::Result<Project<'a, R>, R::Record>> {
+		self.remote
+			.set_add("meta/projects", slug)
 			.map(|result| match result {
 				Ok(_) => Ok(Project {
-					workspace: self,
+					remote: &self.remote,
 					slug: slug.to_string(),
 					meta_path: format!("meta/project/{}", slug),
 					path: format!("project/{}", slug),
@@ -256,7 +295,7 @@ where
 
 	/// Gets a ticket by its slug.
 	/// Returns [`Error::NotFound`] if either the project or ticket do not exist.
-	fn ticket(&'a self, slug: &str) -> Result<Ticket<'a, Self>> {
+	pub fn ticket(&'a self, slug: &str) -> Result<Ticket<'a, R>> {
 		let (project_slug, ticket_id) = slug
 			.rsplit_once('-')
 			.ok_or_else(|| Error::Malformed(slug.to_string()))?;
@@ -320,14 +359,14 @@ pub enum SetOperation {
 /// A Minimap project. Projects are a collection of tickets,
 /// which are a collection of comments, attachments, and other
 /// such resources.
-pub struct Project<'a, W: Workspace<'a>> {
-	workspace: &'a W,
+pub struct Project<'a, R: Remote<'a>> {
+	remote: &'a R,
 	slug: String,
 	meta_path: String,
 	path: String,
 }
 
-impl<'a, W: Workspace<'a>> Project<'a, W> {
+impl<'a, R: Remote<'a>> Project<'a, R> {
 	/// Gets the slug of the project.
 	#[inline]
 	pub fn slug(&self) -> &str {
@@ -335,37 +374,37 @@ impl<'a, W: Workspace<'a>> Project<'a, W> {
 	}
 
 	/// Gets the name of the workspace.
-	pub fn name(&self) -> Result<Option<W::Record>> {
-		self.workspace
+	pub fn name(&self) -> Result<Option<R::Record>> {
+		self.remote
 			.walk(&format!("{}/name", self.meta_path))?
 			.next()
 			.transpose()
 	}
 
 	/// Sets the name of the workspace.
-	pub fn set_name(&self, name: &str) -> Result<W::Record> {
-		self.workspace
+	pub fn set_name(&self, name: &str) -> Result<R::Record> {
+		self.remote
 			.record_builder(&format!("{}/name", self.meta_path))
 			.commit(name)
 	}
 
 	/// Gets the description of the workspace.
-	pub fn description(&self) -> Result<Option<W::Record>> {
-		self.workspace
+	pub fn description(&self) -> Result<Option<R::Record>> {
+		self.remote
 			.walk(&format!("{}/description", self.meta_path))?
 			.next()
 			.transpose()
 	}
 
 	/// Sets the description of the project.
-	pub fn set_description(&self, description: &str) -> Result<W::Record> {
-		self.workspace
+	pub fn set_description(&self, description: &str) -> Result<R::Record> {
+		self.remote
 			.record_builder(&format!("{}/description", self.meta_path))
 			.commit(description)
 	}
 
 	/// Creates a ticket in the project.
-	pub fn create_ticket(&self) -> Result<Ticket<'a, W>> {
+	pub fn create_ticket(&self) -> Result<Ticket<'a, R>> {
 		// First, get a new ticket ID by incrementing the ticket counter.
 		// The ticket counter is stored in the meta/project/<slug>/ticket_counter
 		// collection, and is the head record with a single integer value.
@@ -373,7 +412,7 @@ impl<'a, W: Workspace<'a>> Project<'a, W> {
 		// The ticket counter is not a set, it's just a running count.
 		let ticket_counter_path = format!("{}/ticket_counter", self.meta_path);
 		let ticket_counter = self
-			.workspace
+			.remote
 			.walk(&ticket_counter_path)?
 			.next()
 			.transpose()?
@@ -393,17 +432,17 @@ impl<'a, W: Workspace<'a>> Project<'a, W> {
 		// count if the tickets set add fails, which is fine - because in the inverse cass (where
 		// we increment after we add to the set, but the increment fails), the next time a ticket
 		// is created we'll get a malformed collection error.
-		self.workspace
+		self.remote
 			.record_builder(&ticket_counter_path)
 			.commit(&ticket_id.to_string())?;
 
 		// Now, create the ticket in the project/tickets set.
-		self.workspace
+		self.remote
 			.set_add(&format!("{}/tickets", self.path), &ticket_id.to_string())?
 			.map_err(|_| Error::Malformed(format!("{}/tickets", self.path)))?;
 
 		Ok(Ticket {
-			workspace: self.workspace,
+			remote: self.remote,
 			slug: ticket_slug,
 			id: ticket_id,
 			path: format!("{}/ticket/{}", self.path, ticket_id),
@@ -411,14 +450,14 @@ impl<'a, W: Workspace<'a>> Project<'a, W> {
 	}
 
 	/// Gets a ticket by its ID.
-	pub fn ticket(&self, id: u64) -> Result<Ticket<'a, W>> {
+	pub fn ticket(&self, id: u64) -> Result<Ticket<'a, R>> {
 		// First, check if the ticket exists.
-		self.workspace
+		self.remote
 			.set_find(&format!("{}/tickets", self.path), &id.to_string())?
 			.map_err(|_| Error::NotFound(format!("{}/tickets", self.path), id.to_string()))?;
 
 		Ok(Ticket {
-			workspace: self.workspace,
+			remote: self.remote,
 			slug: format!("{}-{}", self.slug, id),
 			id,
 			path: format!("{}/ticket/{}", self.path, id),
@@ -429,14 +468,14 @@ impl<'a, W: Workspace<'a>> Project<'a, W> {
 /// A Minimap ticket. Tickets are a collection of comments,
 /// attachments, and other such resources, and belong to a
 /// project.
-pub struct Ticket<'a, W: Workspace<'a>> {
-	workspace: &'a W,
+pub struct Ticket<'a, R: Remote<'a>> {
+	remote: &'a R,
 	slug: String,
 	id: u64,
 	path: String,
 }
 
-impl<'a, W: Workspace<'a>> Ticket<'a, W> {
+impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	/// Gets the slug of the ticket.
 	pub fn slug(&self) -> &str {
 		&self.slug
@@ -448,44 +487,44 @@ impl<'a, W: Workspace<'a>> Ticket<'a, W> {
 	}
 
 	/// Gets the title of the ticket.
-	pub fn title(&self) -> Result<Option<W::Record>> {
-		self.workspace
+	pub fn title(&self) -> Result<Option<R::Record>> {
+		self.remote
 			.walk(&format!("{}/title", self.path))?
 			.next()
 			.transpose()
 	}
 
 	/// Sets the title of the ticket.
-	pub fn set_title(&self, name: &str) -> Result<W::Record> {
-		self.workspace
+	pub fn set_title(&self, name: &str) -> Result<R::Record> {
+		self.remote
 			.record_builder(&format!("{}/title", self.path))
 			.commit(name)
 	}
 
 	/// Gets an iterator over all comments on the ticket,
 	/// in reverse order from latest to oldest.
-	pub fn comments(&self) -> Result<W::Iterator> {
-		self.workspace.walk(&format!("{}/comment", self.path))
+	pub fn comments(&self) -> Result<R::Iterator> {
+		self.remote.walk(&format!("{}/comment", self.path))
 	}
 
 	/// Creates a new comment on the ticket.
-	pub fn add_comment(&self, comment: &str) -> Result<W::Record> {
-		self.workspace
+	pub fn add_comment(&self, comment: &str) -> Result<R::Record> {
+		self.remote
 			.record_builder(&format!("{}/comment", self.path))
 			.commit(comment)
 	}
 
 	/// Creates a new attachment on the ticket.
-	pub fn upsert_attachment(&self, name: &str, data: &[u8]) -> Result<W::Record> {
-		self.workspace
+	pub fn upsert_attachment(&self, name: &str, data: &[u8]) -> Result<R::Record> {
+		self.remote
 			.record_builder(&format!("{}/attachment", self.path))
 			.upsert_attachment(name, data)?
 			.commit(&format!("+{}", name))
 	}
 
 	/// Removes an attachment from the ticket.
-	pub fn remote_attachment(&self, name: &str) -> Result<W::Record> {
-		self.workspace
+	pub fn remote_attachment(&self, name: &str) -> Result<R::Record> {
+		self.remote
 			.record_builder(&format!("{}/attachment", self.path))
 			.remove_attachment(name)?
 			.commit(&format!("-{}", name))
@@ -494,7 +533,7 @@ impl<'a, W: Workspace<'a>> Ticket<'a, W> {
 	/// Gets an attachment from the ticket.
 	pub fn attachment(&self, name: &str) -> Result<Option<Vec<u8>>> {
 		let record = self
-			.workspace
+			.remote
 			.walk(&format!("{}/attachment", self.path))?
 			.next()
 			.transpose()?;
@@ -509,8 +548,8 @@ impl<'a, W: Workspace<'a>> Ticket<'a, W> {
 	/// thus if the ticket state has never been changed, the returned
 	/// record is None. Otherwise, the latest state change record is
 	/// returned.
-	pub fn state(&self) -> Result<(TicketState, Option<W::Record>)> {
-		self.workspace
+	pub fn state(&self) -> Result<(TicketState, Option<R::Record>)> {
+		self.remote
 			.walk(&format!("{}/state", self.path))?
 			.next()
 			.transpose()?
@@ -528,8 +567,8 @@ impl<'a, W: Workspace<'a>> Ticket<'a, W> {
 	}
 
 	/// Sets the state of a ticket.
-	pub fn set_state(&self, state: TicketState) -> Result<W::Record> {
-		self.workspace
+	pub fn set_state(&self, state: TicketState) -> Result<R::Record> {
+		self.remote
 			.record_builder(&format!("{}/state", self.path))
 			.commit(match state {
 				TicketState::Open => "open",

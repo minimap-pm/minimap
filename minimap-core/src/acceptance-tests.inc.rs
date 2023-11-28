@@ -1,11 +1,11 @@
 // This is NOT a complete rust file; it's a snippet that should
 // be included into test modules for workspaces.
 //
-// Define your own `create_test_workspace!()` macro that returns a
+// Define your own `create_test_remote!()` macro that returns a
 // `T: workspace` of some sort, and then include it:
 //
 // ```rust
-// macro_rules! create_test_workspace {
+// macro_rules! create_test_remote {
 //     () => (Myworkspace::new())
 // }
 //
@@ -16,23 +16,23 @@ use crate::*;
 
 #[test]
 fn test_commit() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
-	let commit = workspace.record_builder("coll").commit("test").unwrap();
+	let commit = workspace.remote().record_builder("coll").commit("test").unwrap();
 	assert_eq!(Record::message(&commit), "test");
 
-	let commit = workspace.get_record(&Record::id(&commit)).unwrap().unwrap();
+	let commit = workspace.remote().get_record(&Record::id(&commit)).unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test");
 }
 
 #[test]
 fn test_walk() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
-	let first = workspace.record_builder("coll").commit("test").unwrap();
-	let second = workspace.record_builder("coll").commit("test2").unwrap();
+	let first = workspace.remote().record_builder("coll").commit("test").unwrap();
+	let second = workspace.remote().record_builder("coll").commit("test2").unwrap();
 
-	let mut iter = workspace.walk("coll").unwrap();
+	let mut iter = workspace.remote().walk("coll").unwrap();
 	let commit = iter.next().unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test2");
 	assert_eq!(Record::id(&commit), second.id().to_string());
@@ -44,18 +44,18 @@ fn test_walk() {
 
 #[test]
 fn test_set_walk() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
-	workspace.set_add_unchecked("coll", "test").unwrap();
-	workspace.set_del_unchecked("coll", "test").unwrap();
-	workspace.set_add_unchecked("coll", "test2").unwrap();
-	workspace.set_add_unchecked("coll", "test3").unwrap();
-	workspace.set_add_unchecked("coll", "test4").unwrap();
-	workspace.set_add_unchecked("coll", "test5").unwrap();
-	workspace.set_del_unchecked("coll", "test4").unwrap();
+	workspace.remote().set_add_unchecked("coll", "test").unwrap();
+	workspace.remote().set_del_unchecked("coll", "test").unwrap();
+	workspace.remote().set_add_unchecked("coll", "test2").unwrap();
+	workspace.remote().set_add_unchecked("coll", "test3").unwrap();
+	workspace.remote().set_add_unchecked("coll", "test4").unwrap();
+	workspace.remote().set_add_unchecked("coll", "test5").unwrap();
+	workspace.remote().set_del_unchecked("coll", "test4").unwrap();
 
 	let records = workspace
-		.walk_set("coll")
+		.remote().walk_set("coll")
 		.unwrap()
 		.map(|r| r.unwrap())
 		.map(|(record, op)| (Record::message(&record), op))
@@ -72,64 +72,64 @@ fn test_set_walk() {
 
 #[test]
 fn test_set() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
-	let commit = workspace.set_add_unchecked("coll", "test").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test").unwrap();
 	assert_eq!(Record::message(&commit), "test");
 
-	let commit = workspace.set_find("coll", "test").unwrap().unwrap();
+	let commit = workspace.remote().set_find("coll", "test").unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test");
 
-	let commit = workspace.set_del_unchecked("coll", "test").unwrap();
+	let commit = workspace.remote().set_del_unchecked("coll", "test").unwrap();
 	assert_eq!(Record::message(&commit), "test");
 
 	let commit = workspace
-		.set_find("coll", "test")
+		.remote().set_find("coll", "test")
 		.unwrap()
 		.unwrap_err()
 		.unwrap();
 	assert_eq!(Record::message(&commit), "test");
 
-	let commit = workspace.set_find("coll", "test2").unwrap().unwrap_err();
+	let commit = workspace.remote().set_find("coll", "test2").unwrap().unwrap_err();
 	assert!(commit.is_none());
 
-	let commit = workspace.set_add_unchecked("coll", "test2").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test2").unwrap();
 	assert_eq!(Record::message(&commit), "test2");
 
-	let commit = workspace.set_find("coll", "test2").unwrap().unwrap();
+	let commit = workspace.remote().set_find("coll", "test2").unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test2");
 
-	let commit = workspace.set_add_unchecked("coll", "test3").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test3").unwrap();
 	assert_eq!(Record::message(&commit), "test3");
-	let commit = workspace.set_add_unchecked("coll", "test4").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test4").unwrap();
 	assert_eq!(Record::message(&commit), "test4");
-	let commit = workspace.set_add_unchecked("coll", "test5").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test5").unwrap();
 	assert_eq!(Record::message(&commit), "test5");
 
-	let commit = workspace.set_find("coll", "test4").unwrap().unwrap();
+	let commit = workspace.remote().set_find("coll", "test4").unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test4");
-	let commit = workspace.set_find("coll", "test5").unwrap().unwrap();
+	let commit = workspace.remote().set_find("coll", "test5").unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test5");
-	let commit = workspace.set_find("coll", "test3").unwrap().unwrap();
+	let commit = workspace.remote().set_find("coll", "test3").unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test3");
 
-	let commit = workspace.set_del_unchecked("coll", "test4").unwrap();
+	let commit = workspace.remote().set_del_unchecked("coll", "test4").unwrap();
 	assert_eq!(Record::message(&commit), "test4");
 	let commit = workspace
-		.set_find("coll", "test4")
+		.remote().set_find("coll", "test4")
 		.unwrap()
 		.unwrap_err()
 		.unwrap();
 	assert_eq!(Record::message(&commit), "test4");
 
-	let commit = workspace.set_find("coll", "test3").unwrap().unwrap();
+	let commit = workspace.remote().set_find("coll", "test3").unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test3");
-	let commit = workspace.set_find("coll", "test5").unwrap().unwrap();
+	let commit = workspace.remote().set_find("coll", "test5").unwrap().unwrap();
 	assert_eq!(Record::message(&commit), "test5");
 
 	// now collect all of the operations we just did into a vector and make sure it's correct
 	let records = workspace
-		.walk_set("coll")
+		.remote().walk_set("coll")
 		.unwrap()
 		.map(|r| r.unwrap())
 		.map(|(record, op)| (Record::message(&record), op))
@@ -146,36 +146,36 @@ fn test_set() {
 
 #[test]
 fn test_set_get_all() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
-	let commit = workspace.set_add_unchecked("coll", "test").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test").unwrap();
 	assert_eq!(Record::message(&commit), "test");
 
-	let commit = workspace.set_add_unchecked("coll", "test2").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test2").unwrap();
 	assert_eq!(Record::message(&commit), "test2");
 
-	let commit = workspace.set_add_unchecked("coll", "test3").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test3").unwrap();
 	assert_eq!(Record::message(&commit), "test3");
 
-	let commit = workspace.set_add_unchecked("coll", "test4").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test4").unwrap();
 	assert_eq!(Record::message(&commit), "test4");
 
-	let commit = workspace.set_add_unchecked("coll", "test5").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test5").unwrap();
 	assert_eq!(Record::message(&commit), "test5");
 
-	let commit = workspace.set_del_unchecked("coll", "test4").unwrap();
+	let commit = workspace.remote().set_del_unchecked("coll", "test4").unwrap();
 	assert_eq!(Record::message(&commit), "test4");
 
-	let commit = workspace.set_del_unchecked("coll", "test3").unwrap();
+	let commit = workspace.remote().set_del_unchecked("coll", "test3").unwrap();
 	assert_eq!(Record::message(&commit), "test3");
 
-	let commit = workspace.set_add_unchecked("coll", "test6").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test6").unwrap();
 	assert_eq!(Record::message(&commit), "test6");
 
-	let commit = workspace.set_add_unchecked("coll", "test3").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test3").unwrap();
 	assert_eq!(Record::message(&commit), "test3");
 
-	let records = workspace.set_get_all("coll").unwrap();
+	let records = workspace.remote().set_get_all("coll").unwrap();
 	assert_eq!(records.len(), 5);
 	assert_eq!(records[0].message(), "test");
 	assert_eq!(records[1].message(), "test2");
@@ -186,33 +186,33 @@ fn test_set_get_all() {
 
 #[test]
 fn test_set_checked() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
-	let commit = workspace.set_add("coll", "test").unwrap().unwrap();
+	let commit = workspace.remote().set_add("coll", "test").unwrap().unwrap();
 	assert_eq!(Record::message(&commit.0), "test");
 	assert_eq!(commit.1, None);
-	assert_eq!(workspace.walk_set("coll").unwrap().count(), 1);
+	assert_eq!(workspace.remote().walk_set("coll").unwrap().count(), 1);
 
-	let commit = workspace.set_add("coll", "test").unwrap().unwrap_err();
+	let commit = workspace.remote().set_add("coll", "test").unwrap().unwrap_err();
 	assert_eq!(Record::message(&commit), "test");
-	assert_eq!(workspace.walk_set("coll").unwrap().count(), 1);
+	assert_eq!(workspace.remote().walk_set("coll").unwrap().count(), 1);
 
-	let commit = workspace.set_add("coll", "test").unwrap().unwrap_err();
+	let commit = workspace.remote().set_add("coll", "test").unwrap().unwrap_err();
 	assert_eq!(Record::message(&commit), "test");
-	assert_eq!(workspace.walk_set("coll").unwrap().count(), 1);
+	assert_eq!(workspace.remote().walk_set("coll").unwrap().count(), 1);
 
-	let commit = workspace.set_add_unchecked("coll", "test").unwrap();
+	let commit = workspace.remote().set_add_unchecked("coll", "test").unwrap();
 	assert_eq!(Record::message(&commit), "test");
-	assert_eq!(workspace.walk_set("coll").unwrap().count(), 2);
+	assert_eq!(workspace.remote().walk_set("coll").unwrap().count(), 2);
 
-	let commit = workspace.set_add("coll", "test").unwrap().unwrap_err();
+	let commit = workspace.remote().set_add("coll", "test").unwrap().unwrap_err();
 	assert_eq!(Record::message(&commit), "test");
-	assert_eq!(workspace.walk_set("coll").unwrap().count(), 2);
+	assert_eq!(workspace.remote().walk_set("coll").unwrap().count(), 2);
 }
 
 #[test]
 fn test_workspace() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
 	assert_eq!(workspace.name().unwrap(), None);
 	assert_eq!(workspace.description().unwrap(), None);
@@ -224,7 +224,7 @@ fn test_workspace() {
 
 #[test]
 fn test_project() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
 	let project = workspace.create_project("test").unwrap().unwrap();
 	assert_eq!(project.name().unwrap(), None);
@@ -238,7 +238,7 @@ fn test_project() {
 
 #[test]
 fn test_ticket() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
 	let project = workspace.create_project("test").unwrap().unwrap();
 	let ticket = project.create_ticket().unwrap();
@@ -268,7 +268,7 @@ fn test_ticket() {
 
 #[test]
 fn test_ticket_slug() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
 	let project = workspace.create_project("test").unwrap().unwrap();
 	let ticket = project.create_ticket().unwrap();
@@ -294,7 +294,7 @@ fn test_ticket_slug() {
 
 #[test]
 fn test_ticket_comment() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
 	let project = workspace.create_project("test").unwrap().unwrap();
 	let ticket = project.create_ticket().unwrap();
@@ -317,7 +317,7 @@ fn test_ticket_comment() {
 
 #[test]
 fn test_ticket_comment_attachment() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
 	let project = workspace.create_project("test").unwrap().unwrap();
 	let ticket = project.create_ticket().unwrap();
@@ -333,7 +333,7 @@ fn test_ticket_comment_attachment() {
 
 #[test]
 fn test_ticket_state() {
-	let workspace = create_test_workspace!();
+	let workspace = Workspace::open(create_test_remote!());
 
 	let project = workspace.create_project("test").unwrap().unwrap();
 	let ticket = project.create_ticket().unwrap();

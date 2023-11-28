@@ -4,7 +4,7 @@
 //! as a backend. Reads hit the local repository, and writes
 //! are immediately pushed to the workspace.
 
-use crate::{Error, Record, RecordBuilder, Result, SetOperation, Workspace};
+use crate::{Error, Record, RecordBuilder, Remote, Result, SetOperation};
 use git2::{
 	build::{RepoBuilder, TreeUpdateBuilder},
 	AutotagOption, Commit, Cred, FetchOptions, FetchPrune, ObjectType, Oid, PushOptions,
@@ -16,17 +16,17 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-/// An iterator over the commits in a [`GitWorkspace`].
-pub struct GitIterator<'a>(&'a GitWorkspace, Revwalk<'a>);
+/// An iterator over the commits in a [`GitRemote`].
+pub struct GitIterator<'a>(&'a GitRemote, Revwalk<'a>);
 
 /// A remote git repository.
-pub struct GitWorkspace {
+pub struct GitRemote {
 	repo: Repository,
 	set_add_oid: Oid,
 	set_del_oid: Oid,
 }
 
-impl GitWorkspace {
+impl GitRemote {
 	/// Opens a remote repository. If the repository hasn't been cloned yet,
 	/// Minimap will attempt to clone it from the remote prior to returning.
 	pub fn open(remote: &str) -> Result<Self> {
@@ -139,7 +139,7 @@ impl GitWorkspace {
 
 /// A singular git record (a wrapper around a [`git2::Commit`]).
 #[derive(Clone)]
-pub struct GitRecord<'a>(&'a GitWorkspace, Commit<'a>);
+pub struct GitRecord<'a>(&'a GitRemote, Commit<'a>);
 
 impl<'a> Hash for GitRecord<'a> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
@@ -164,7 +164,7 @@ impl<'a> std::fmt::Debug for GitRecord<'a> {
 
 impl<'a> Eq for GitRecord<'a> {}
 
-impl<'a> Workspace<'a> for GitWorkspace {
+impl<'a> Remote<'a> for GitRemote {
 	type Record = GitRecord<'a>;
 	type RecordBuilder = GitRecordBuilder<'a>;
 	type Iterator = GitIterator<'a>;
@@ -329,9 +329,9 @@ impl<'b> Record for GitRecord<'b> {
 	}
 }
 
-/// Builds a commit (with attachments) in order to submit it to a [`GitWorkspace`].
+/// Builds a commit (with attachments) in order to submit it to a [`GitRemote`].
 pub struct GitRecordBuilder<'a> {
-	workspace: &'a GitWorkspace,
+	workspace: &'a GitRemote,
 	branch: String,
 	update: TreeUpdateBuilder,
 	additional_parents: Vec<Oid>,
@@ -339,7 +339,7 @@ pub struct GitRecordBuilder<'a> {
 
 impl<'a> GitRecordBuilder<'a> {
 	#[inline]
-	fn new(workspace: &'a GitWorkspace, branch: &str) -> Self {
+	fn new(workspace: &'a GitRemote, branch: &str) -> Self {
 		Self {
 			workspace,
 			branch: branch.to_string(),
@@ -497,7 +497,7 @@ mod test {
 		}};
 	}
 
-	fn create_test_workspace(test_name: String) -> GitWorkspace {
+	fn create_test_remote(test_name: String) -> GitRemote {
 		let mut path = ::std::env::temp_dir();
 		path.push("minimap-test");
 		path.push(test_name);
@@ -545,15 +545,15 @@ mod test {
 		// since we're not cloning, we have to do it ourselves.
 		repo.remote_set_url("origin", &remote_uri).unwrap();
 
-		GitWorkspace::open(&remote_uri).unwrap()
+		GitRemote::open(&remote_uri).unwrap()
 	}
 
-	macro_rules! create_test_workspace {
+	macro_rules! create_test_remote {
 		() => {
-			create_test_workspace(function!().to_string())
+			create_test_remote(function!().to_string())
 		};
 		($name:literal) => {
-			create_test_workspace($name.to_string())
+			create_test_remote($name.to_string())
 		};
 	}
 

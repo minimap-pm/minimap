@@ -1,6 +1,6 @@
 //! An in-memory Minimap workspace, useful for testing.
 
-use crate::{Error, Record, RecordBuilder, Result, SetOperation, Workspace};
+use crate::{Error, Record, RecordBuilder, Remote, Result, SetOperation};
 use sha2::{Digest, Sha256};
 use std::{
 	collections::HashMap,
@@ -63,13 +63,13 @@ impl State {
 
 /// An in-memory Minimap workspace, useful for testing.
 #[derive(Default, Clone)]
-pub struct MemoryWorkspace {
+pub struct MemoryRemote {
 	author: String,
 	email: String,
 	state: Arc<Mutex<State>>,
 }
 
-impl MemoryWorkspace {
+impl MemoryRemote {
 	/// Creates a new in-memory workspace.
 	pub fn new(author: &str, email: &str) -> Self {
 		Self {
@@ -125,7 +125,7 @@ where
 	}
 }
 
-impl<'a> Workspace<'a> for MemoryWorkspace {
+impl<'a> Remote<'a> for MemoryRemote {
 	type Record = MemoryRecordRef;
 	type RecordBuilder = MemoryRecordBuilder<'a>;
 	type Iterator = MemoryIterator;
@@ -210,7 +210,7 @@ impl Record for MemoryRecordRef {
 	}
 }
 
-/// The iterator type for [`MemoryWorkspace`].
+/// The iterator type for [`MemoryRemote`].
 pub struct MemoryIterator(Arc<Mutex<State>>, Option<MemoryRecordRef>);
 
 impl Iterator for MemoryIterator {
@@ -234,7 +234,7 @@ impl Iterator for MemoryIterator {
 	}
 }
 
-/// The set iterator type for [`MemoryWorkspace`].
+/// The set iterator type for [`MemoryRemote`].
 pub struct MemorySetIterator(MemoryIterator);
 
 impl Iterator for MemorySetIterator {
@@ -259,16 +259,16 @@ impl Iterator for MemorySetIterator {
 	}
 }
 
-/// The record builder type for [`MemoryWorkspace`].
+/// The record builder type for [`MemoryRemote`].
 pub struct MemoryRecordBuilder<'a> {
-	workspace: &'a MemoryWorkspace,
+	workspace: &'a MemoryRemote,
 	collection: String,
 	attachments: HashMap<String, Option<String>>,
 	op: Option<SetOperation>,
 }
 
 impl<'a> MemoryRecordBuilder<'a> {
-	fn new(workspace: &'a MemoryWorkspace, collection: String) -> Self {
+	fn new(workspace: &'a MemoryRemote, collection: String) -> Self {
 		Self {
 			workspace,
 			collection,
@@ -346,9 +346,9 @@ impl<'a> RecordBuilder<'a> for MemoryRecordBuilder<'a> {
 mod tests {
 	use super::*;
 
-	macro_rules! create_test_workspace {
+	macro_rules! create_test_remote {
 		() => {
-			MemoryWorkspace::new("Max Mustermann", "max@example.com")
+			MemoryRemote::new("Max Mustermann", "max@example.com")
 		};
 	}
 
