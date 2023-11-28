@@ -513,7 +513,7 @@ mod test {
 			.unwrap();
 
 		let tmp_path = generate_tmp_dir(&remote_uri).unwrap();
-		::std::fs::remove_dir_all(tmp_path)
+		::std::fs::remove_dir_all(&tmp_path)
 			.or_else(|e| {
 				if e.kind() == ::std::io::ErrorKind::NotFound {
 					Ok(())
@@ -523,11 +523,13 @@ mod test {
 			})
 			.unwrap();
 
-		let repo = Repository::init_bare(&path).unwrap();
+		Repository::init_bare(&path).unwrap();
 
-		// Set the user.name and user.email config values
-		// since there's no guarantee they've been set up globally
-		// on the system that's testing Minimap.
+		// Init the test repository and set the user.name and
+		// user.email config values since there's no guarantee
+		// they've been set up globally on the system that's
+		// testing Minimap.
+		let repo = Repository::init(&tmp_path).unwrap();
 		repo.config()
 			.unwrap()
 			.set_str("user.name", "Test User")
@@ -536,6 +538,11 @@ mod test {
 			.unwrap()
 			.set_str("user.email", "test@example.com")
 			.unwrap();
+
+		// We also have to manually create the 'origin' remote.
+		// This is normally done by the clone operation, but
+		// since we're not cloning, we have to do it ourselves.
+		repo.remote_set_url("origin", &remote_uri).unwrap();
 
 		GitWorkspace::open(&remote_uri).unwrap()
 	}
