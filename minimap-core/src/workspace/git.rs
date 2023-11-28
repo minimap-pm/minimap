@@ -523,7 +523,20 @@ mod test {
 			})
 			.unwrap();
 
-		Repository::init_bare(&path).unwrap();
+		let repo = Repository::init_bare(&path).unwrap();
+
+		// Set the user.name and user.email config values
+		// since there's no guarantee they've been set up globally
+		// on the system that's testing Minimap.
+		repo.config()
+			.unwrap()
+			.set_str("user.name", "Test User")
+			.unwrap();
+		repo.config()
+			.unwrap()
+			.set_str("user.email", "test@example.com")
+			.unwrap();
+
 		GitWorkspace::open(&remote_uri).unwrap()
 	}
 
