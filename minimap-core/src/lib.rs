@@ -470,4 +470,16 @@ impl<'a, W: Workspace> Ticket<'a, W> {
 			.record_builder(&format!("{}/title", self.path))
 			.commit(name)
 	}
+
+	/// Gets an iterator over all comments on the ticket,
+	/// in reverse order from latest to oldest.
+	pub fn comments(&self) -> Result<W::Iterator<'a>> {
+		self.workspace.walk(&format!("{}/comment", self.path))
+	}
+
+	/// Creates a record builder for a comment on the ticket.
+	pub fn comment_builder(&self) -> W::RecordBuilder<'a> {
+		self.workspace
+			.record_builder(&format!("{}/comment", self.path))
+	}
 }

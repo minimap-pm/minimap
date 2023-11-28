@@ -289,3 +289,26 @@ fn test_ticket_slug() {
 	assert_eq!(ticket3.slug(), "test-1");
 	assert_eq!(ticket3.title().unwrap().unwrap().message(), "test title");
 }
+
+#[test]
+fn test_ticket_comment() {
+	let workspace = create_test_workspace!();
+
+	let project = workspace.create_project("test").unwrap().unwrap();
+	let ticket = project.create_ticket().unwrap();
+	assert_eq!(ticket.id(), 1);
+	assert_eq!(ticket.slug(), "test-1");
+	assert_eq!(ticket.title().unwrap(), None);
+
+	let comment = ticket.comment_builder().commit("test comment").unwrap();
+	assert_eq!(comment.message(), "test comment");
+
+	let comment2 = ticket.comment_builder().commit("test comment 2").unwrap();
+	assert_eq!(comment2.message(), "test comment 2");
+
+	// now iterate over the comments and make sure they're in the right order
+	let comments = ticket.comments().unwrap().map(Result::unwrap).collect::<Vec<_>>();
+	assert_eq!(comments.len(), 2);
+	assert_eq!(comments[0].message(), "test comment 2");
+	assert_eq!(comments[1].message(), "test comment");
+}
