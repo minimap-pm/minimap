@@ -262,6 +262,22 @@ pub trait Workspace: Sized {
 				Err(record) => Err(record),
 			})
 	}
+
+	/// Gets a ticket by its slug.
+	/// Returns [`Error::NotFound`] if either the project or ticket do not exist.
+	fn ticket<'a>(&'a self, slug: &str) -> Result<Ticket<'a, Self>> {
+		let (project_slug, ticket_id) = slug
+			.rsplit_once('-')
+			.ok_or_else(|| Error::Malformed(slug.to_string()))?;
+
+		let project = self.project(project_slug)?;
+
+		let ticket_id = ticket_id
+			.parse::<u64>()
+			.map_err(|_| Error::Malformed(slug.to_string()))?;
+
+		project.ticket(ticket_id)
+	}
 }
 
 /// A single record from a collection.
@@ -392,15 +408,29 @@ where
 
 		// Now, create the ticket in the project/tickets set.
 		self.workspace
-			.set_add(&format!("{}/tickets", self.path), &ticket_slug)?
+			.set_add(&format!("{}/tickets", self.path), &ticket_id.to_string())?
 			.map_err(|_| Error::Malformed(format!("{}/tickets", self.path)))?;
 
 		Ok(Ticket {
 			workspace: self.workspace,
 			slug: ticket_slug,
 			id: ticket_id,
-			meta_path: format!("{}/ticket/{}", self.meta_path, ticket_id),
 			path: format!("{}/ticket/{}", self.path, ticket_id),
+		})
+	}
+
+	/// Gets a ticket by its ID.
+	pub fn ticket(&self, id: u64) -> Result<Ticket<'a, W>> {
+		// First, check if the ticket exists.
+		self.workspace
+			.set_find(&format!("{}/tickets", self.path), &id.to_string())?
+			.map_err(|_| Error::NotFound(format!("{}/tickets", self.path), id.to_string()))?;
+
+		Ok(Ticket {
+			workspace: self.workspace,
+			slug: format!("{}-{}", self.slug, id),
+			id,
+			path: format!("{}/ticket/{}", self.path, id),
 		})
 	}
 }
@@ -412,7 +442,6 @@ pub struct Ticket<'a, W: Workspace> {
 	workspace: &'a W,
 	slug: String,
 	id: u64,
-	meta_path: String,
 	path: String,
 }
 
@@ -430,7 +459,7 @@ impl<'a, W: Workspace> Ticket<'a, W> {
 	/// Gets the title of the ticket.
 	pub fn title(&self) -> Result<Option<W::Record<'a>>> {
 		self.workspace
-			.walk(&format!("{}/title", self.meta_path))?
+			.walk(&format!("{}/title", self.path))?
 			.next()
 			.transpose()
 	}
@@ -438,7 +467,7 @@ impl<'a, W: Workspace> Ticket<'a, W> {
 	/// Sets the title of the ticket.
 	pub fn set_title(&self, name: &str) -> Result<W::Record<'a>> {
 		self.workspace
-			.record_builder(&format!("{}/title", self.meta_path))
+			.record_builder(&format!("{}/title", self.path))
 			.commit(name)
 	}
 }

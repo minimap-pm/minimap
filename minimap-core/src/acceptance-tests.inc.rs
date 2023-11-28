@@ -246,4 +246,46 @@ fn test_ticket() {
 
 	ticket.set_title("test title").unwrap();
 	assert_eq!(ticket.title().unwrap().unwrap().message(), "test title");
+
+	let ticket2 = project.create_ticket().unwrap();
+	assert_eq!(ticket2.id(), 2);
+	assert_eq!(ticket2.slug(), "test-2");
+	assert_eq!(ticket2.title().unwrap(), None);
+
+	let ticket3 = project.create_ticket().unwrap();
+	assert_eq!(ticket3.id(), 3);
+	assert_eq!(ticket3.slug(), "test-3");
+	assert_eq!(ticket3.title().unwrap(), None);
+
+	ticket3.set_title("test title 3").unwrap();
+	assert_eq!(ticket3.title().unwrap().unwrap().message(), "test title 3");
+
+	// make sure that we didn't overwrite ticket 1 or something
+	assert_eq!(ticket.title().unwrap().unwrap().message(), "test title");
+}
+
+#[test]
+fn test_ticket_slug() {
+	let workspace = create_test_workspace!();
+
+	let project = workspace.create_project("test").unwrap().unwrap();
+	let ticket = project.create_ticket().unwrap();
+	assert_eq!(ticket.id(), 1);
+	assert_eq!(ticket.slug(), "test-1");
+	assert_eq!(ticket.title().unwrap(), None);
+
+	ticket.set_title("test title").unwrap();
+	assert_eq!(ticket.title().unwrap().unwrap().message(), "test title");
+
+	// now try to fetch that ticket from the project
+	let ticket2 = project.ticket(1).unwrap();
+	assert_eq!(ticket2.id(), 1);
+	assert_eq!(ticket2.slug(), "test-1");
+	assert_eq!(ticket2.title().unwrap().unwrap().message(), "test title");
+
+	// and now try to fetch it from the workspace
+	let ticket3 = workspace.ticket("test-1").unwrap();
+	assert_eq!(ticket3.id(), 1);
+	assert_eq!(ticket3.slug(), "test-1");
+	assert_eq!(ticket3.title().unwrap().unwrap().message(), "test title");
 }
