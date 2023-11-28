@@ -12,6 +12,8 @@
 // include!("acceptance-tests.inc.rs");
 // ```
 
+use crate::*;
+
 #[test]
 fn test_commit() {
 	let workspace = create_test_workspace!();
@@ -327,4 +329,54 @@ fn test_ticket_comment_attachment() {
 
 	let attachment = ticket.attachment("test").unwrap().unwrap();
 	assert_eq!(attachment, b"test attachment");
+}
+
+#[test]
+fn test_ticket_state() {
+	let workspace = create_test_workspace!();
+
+	let project = workspace.create_project("test").unwrap().unwrap();
+	let ticket = project.create_ticket().unwrap();
+	assert_eq!(ticket.id(), 1);
+	assert_eq!(ticket.slug(), "test-1");
+	assert_eq!(ticket.title().unwrap(), None);
+
+	let (state, maybe_record) = ticket.state().unwrap();
+	assert_eq!(state, TicketState::Open);
+	assert!(maybe_record.is_none());
+	assert!(ticket.is_open().unwrap());
+	assert!(!ticket.is_closed().unwrap());
+
+	let record = ticket.set_state(TicketState::Closed).unwrap();
+	let (state, maybe_record) = ticket.state().unwrap();
+	assert_eq!(state, TicketState::Closed);
+	assert_eq!(maybe_record.unwrap().id(), record.id());
+	assert!(!ticket.is_open().unwrap());
+	assert!(ticket.is_closed().unwrap());
+
+	let record = ticket.set_state(TicketState::Open).unwrap();
+	let (state, maybe_record) = ticket.state().unwrap();
+	assert_eq!(state, TicketState::Open);
+	assert_eq!(maybe_record.unwrap().id(), record.id());
+	assert!(ticket.is_open().unwrap());
+	assert!(!ticket.is_closed().unwrap());
+
+	// create a second ticket and make sure its state changes
+	// don't affect the first ticket's.
+	let ticket2 = project.create_ticket().unwrap();
+	assert_eq!(ticket2.id(), 2);
+	assert_eq!(ticket2.slug(), "test-2");
+	assert!(ticket2.is_open().unwrap());
+
+	ticket2.set_state(TicketState::Closed).unwrap();
+	assert!(ticket2.is_closed().unwrap());
+	assert!(ticket.is_open().unwrap());
+
+	ticket2.set_state(TicketState::Open).unwrap();
+	assert!(ticket2.is_open().unwrap());
+	assert!(ticket.is_open().unwrap());
+
+	ticket.set_state(TicketState::Closed).unwrap();
+	assert!(ticket2.is_open().unwrap());
+	assert!(ticket.is_closed().unwrap());
 }

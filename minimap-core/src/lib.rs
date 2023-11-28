@@ -504,4 +504,57 @@ impl<'a, W: Workspace<'a>> Ticket<'a, W> {
 			None => Ok(None),
 		}
 	}
+
+	/// Gets the status of the ticket. Tickets are open by default;
+	/// thus if the ticket state has never been changed, the returned
+	/// record is None. Otherwise, the latest state change record is
+	/// returned.
+	pub fn state(&self) -> Result<(TicketState, Option<W::Record>)> {
+		self.workspace
+			.walk(&format!("{}/state", self.path))?
+			.next()
+			.transpose()?
+			.map_or_else(
+				|| Ok((TicketState::Open, None)),
+				|record| {
+					let state = match record.message().as_str() {
+						"open" => TicketState::Open,
+						"closed" => TicketState::Closed,
+						_ => return Err(Error::Malformed(format!("{}/state", self.path))),
+					};
+					Ok((state, Some(record)))
+				},
+			)
+	}
+
+	/// Sets the state of a ticket.
+	pub fn set_state(&self, state: TicketState) -> Result<W::Record> {
+		self.workspace
+			.record_builder(&format!("{}/state", self.path))
+			.commit(match state {
+				TicketState::Open => "open",
+				TicketState::Closed => "closed",
+			})
+	}
+
+	/// Returns if the ticket is open.
+	#[inline]
+	pub fn is_open(&self) -> Result<bool> {
+		Ok(self.state()?.0 == TicketState::Open)
+	}
+
+	/// Returns if the ticket is closed.
+	#[inline]
+	pub fn is_closed(&self) -> Result<bool> {
+		Ok(self.state()?.0 == TicketState::Closed)
+	}
+}
+
+/// The status of a ticket.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TicketState {
+	/// The ticket is open.
+	Open,
+	/// The ticket is closed.
+	Closed,
 }
