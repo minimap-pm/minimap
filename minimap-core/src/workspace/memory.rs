@@ -5,12 +5,12 @@ use sha2::{Digest, Sha256};
 use std::{
 	collections::HashMap,
 	hash::Hash,
-	sync::{Arc, Mutex, MutexGuard},
+	sync::{Arc, Mutex},
 	time::{SystemTime, UNIX_EPOCH},
 };
 
 /// A memory record for in-memory workspaces.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MemoryRecord {
 	id: String,
 	parent: Option<String>,
@@ -35,6 +35,13 @@ impl PartialEq for MemoryRecord {
 }
 
 impl Eq for MemoryRecord {}
+
+impl std::fmt::Debug for MemoryRecord {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// just format the ID
+		self.id.fmt(f)
+	}
+}
 
 #[derive(Default)]
 struct State {
@@ -83,110 +90,155 @@ impl MemoryWorkspace {
 	}
 }
 
-impl Workspace for MemoryWorkspace {
-	type Record<'a> = MemoryRecord;
-	type RecordBuilder<'a> = MemoryRecordBuilder<'a>;
-	type Iterator<'a> = MemoryIterator<'a>;
-	type SetIterator<'a> = MemorySetIterator<'a>;
+/// A reference to a record in an in-memory workspace.
+/// This is the primary external type for interacting with
+/// in-memory workspace records.
+#[derive(Clone)]
+pub struct MemoryRecordRef(Arc<Mutex<State>>, MemoryRecord);
 
-	fn walk<'a>(&'a self, collection: &str) -> Result<Self::Iterator<'a>> {
+impl std::fmt::Debug for MemoryRecordRef
+where
+	MemoryRecord: std::fmt::Debug,
+{
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.1.fmt(f)
+	}
+}
+
+impl PartialEq for MemoryRecordRef
+where
+	MemoryRecord: PartialEq,
+{
+	fn eq(&self, other: &Self) -> bool {
+		self.1.eq(&other.1)
+	}
+}
+
+impl Eq for MemoryRecordRef where MemoryRecord: Eq {}
+
+impl Hash for MemoryRecordRef
+where
+	MemoryRecord: Hash,
+{
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.1.hash(state);
+	}
+}
+
+impl<'a> Workspace<'a> for MemoryWorkspace {
+	type Record = MemoryRecordRef;
+	type RecordBuilder = MemoryRecordBuilder<'a>;
+	type Iterator = MemoryIterator;
+	type SetIterator = MemorySetIterator;
+
+	fn walk(&'a self, collection: &str) -> Result<Self::Iterator> {
 		let state = self.state.lock().unwrap();
 		let next = state
 			.heads
 			.get(collection)
 			.and_then(|id| state.records.get(id).cloned());
-		Ok(MemoryIterator(state, next))
+		Ok(MemoryIterator(
+			self.state.clone(),
+			next.map(|record| MemoryRecordRef(self.state.clone(), record)),
+		))
 	}
 
-	fn record_builder<'a>(&'a self, collection: &str) -> Self::RecordBuilder<'a> {
+	fn record_builder(&'a self, collection: &str) -> Self::RecordBuilder {
 		MemoryRecordBuilder::new(self, collection.to_string())
 	}
 
-	fn set_add_unchecked<'a>(
-		&'a self,
-		collection: &str,
-		message: &str,
-	) -> Result<Self::Record<'a>> {
+	fn set_add_unchecked(&'a self, collection: &str, message: &str) -> Result<Self::Record> {
 		self.record_builder(collection)
 			.op(SetOperation::Add)
 			.commit(message)
 	}
 
-	fn set_del_unchecked<'a>(
-		&'a self,
-		collection: &str,
-		message: &str,
-	) -> Result<Self::Record<'a>> {
+	fn set_del_unchecked(&'a self, collection: &str, message: &str) -> Result<Self::Record> {
 		self.record_builder(collection)
 			.op(SetOperation::Del)
 			.commit(message)
 	}
 
-	fn walk_set<'a>(&'a self, collection: &str) -> Result<Self::SetIterator<'a>> {
+	fn walk_set(&'a self, collection: &str) -> Result<Self::SetIterator> {
 		self.walk(collection).map(MemorySetIterator)
 	}
 
-	fn get_record<'a>(&'a self, id: &str) -> Result<Option<Self::Record<'a>>> {
+	fn get_record(&'a self, id: &str) -> Result<Option<Self::Record>> {
 		let state = self.state.lock().unwrap();
-		Ok(state.records.get(id).cloned())
+		Ok(state
+			.records
+			.get(id)
+			.cloned()
+			.map(|record| MemoryRecordRef(self.state.clone(), record)))
 	}
 }
 
-impl Record for MemoryRecord {
+impl Record for MemoryRecordRef {
 	#[inline]
 	fn id(&self) -> String {
-		self.id.clone()
+		self.1.id.clone()
 	}
 
 	#[inline]
 	fn author(&self) -> String {
-		self.author.clone()
+		self.1.author.clone()
 	}
 
 	#[inline]
 	fn email(&self) -> String {
-		self.email.clone()
+		self.1.email.clone()
 	}
 
 	#[inline]
 	fn message(&self) -> String {
-		self.message.clone()
+		self.1.message.clone()
 	}
 
 	#[inline]
 	fn timestamp(&self) -> i64 {
-		self.timestamp
+		self.1.timestamp
+	}
+
+	fn attachment(&self, name: &str) -> Result<Option<Vec<u8>>> {
+		let id = match self.1.attachments.get(name) {
+			Some(id) => id,
+			None => return Ok(None),
+		};
+
+		let state = self.0.lock().unwrap();
+		Ok(state.attachment_pool.get(id).cloned())
 	}
 }
 
 /// The iterator type for [`MemoryWorkspace`].
-pub struct MemoryIterator<'a>(MutexGuard<'a, State>, Option<MemoryRecord>);
+pub struct MemoryIterator(Arc<Mutex<State>>, Option<MemoryRecordRef>);
 
-impl<'a> Iterator for MemoryIterator<'a> {
-	type Item = Result<MemoryRecord>;
+impl Iterator for MemoryIterator {
+	type Item = Result<MemoryRecordRef>;
 
 	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
+		let state = self.0.lock().unwrap();
 		let (record, next) = {
-			let state = &mut self.0;
 			let next = self.1.as_ref().and_then(|record| {
 				record
+					.1
 					.parent
 					.as_ref()
 					.and_then(|parent| state.records.get(parent).cloned())
 			});
 			(self.1.take(), next)
 		};
-		self.1 = next;
+		self.1 = next.map(|r| MemoryRecordRef(self.0.clone(), r.clone()));
 		record.map(Ok)
 	}
 }
 
 /// The set iterator type for [`MemoryWorkspace`].
-pub struct MemorySetIterator<'a>(MemoryIterator<'a>);
+pub struct MemorySetIterator(MemoryIterator);
 
-impl<'a> Iterator for MemorySetIterator<'a> {
-	type Item = Result<(MemoryRecord, SetOperation)>;
+impl Iterator for MemorySetIterator {
+	type Item = Result<(MemoryRecordRef, SetOperation)>;
 
 	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
@@ -196,12 +248,12 @@ impl<'a> Iterator for MemorySetIterator<'a> {
 			None => return None,
 		};
 
-		if let Some(op) = record.op {
+		if let Some(op) = record.1.op {
 			Some(Ok((record, op)))
 		} else {
 			Some(Err(Error::Malformed(format!(
 				"record {} is not a set operation",
-				record.id
+				record.1.id
 			))))
 		}
 	}
@@ -234,21 +286,21 @@ impl<'a> MemoryRecordBuilder<'a> {
 }
 
 impl<'a> RecordBuilder<'a> for MemoryRecordBuilder<'a> {
-	type Record<'b> = MemoryRecord where Self: 'b;
+	type Record = MemoryRecordRef;
 
-	fn upsert_attachment<D: AsRef<[u8]>>(&mut self, name: &str, data: D) -> Result<()> {
+	fn upsert_attachment<D: AsRef<[u8]>>(mut self, name: &str, data: D) -> Result<Self> {
 		let data = data.as_ref().to_vec();
 		let id = self.workspace.insert_attachment(data);
 		self.attachments.insert(name.to_string(), Some(id.clone()));
-		Ok(())
+		Ok(self)
 	}
 
-	fn remove_attachment(&mut self, name: &str) -> Result<()> {
+	fn remove_attachment(mut self, name: &str) -> Result<Self> {
 		self.attachments.insert(name.to_string(), None);
-		Ok(())
+		Ok(self)
 	}
 
-	fn commit(self, message: &str) -> Result<Self::Record<'a>> {
+	fn commit(self, message: &str) -> Result<Self::Record> {
 		let mut state = self.workspace.state.lock().unwrap();
 		let timestamp = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
@@ -286,7 +338,7 @@ impl<'a> RecordBuilder<'a> for MemoryRecordBuilder<'a> {
 		state.records.insert(id.clone(), record.clone());
 		state.heads.insert(self.collection, id.clone());
 
-		Ok(record)
+		Ok(MemoryRecordRef(self.workspace.state.clone(), record))
 	}
 }
 

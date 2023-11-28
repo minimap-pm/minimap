@@ -300,10 +300,10 @@ fn test_ticket_comment() {
 	assert_eq!(ticket.slug(), "test-1");
 	assert_eq!(ticket.title().unwrap(), None);
 
-	let comment = ticket.comment_builder().commit("test comment").unwrap();
+	let comment = ticket.add_comment("test comment").unwrap();
 	assert_eq!(comment.message(), "test comment");
 
-	let comment2 = ticket.comment_builder().commit("test comment 2").unwrap();
+	let comment2 = ticket.add_comment("test comment 2").unwrap();
 	assert_eq!(comment2.message(), "test comment 2");
 
 	// now iterate over the comments and make sure they're in the right order
@@ -311,4 +311,20 @@ fn test_ticket_comment() {
 	assert_eq!(comments.len(), 2);
 	assert_eq!(comments[0].message(), "test comment 2");
 	assert_eq!(comments[1].message(), "test comment");
+}
+
+#[test]
+fn test_ticket_comment_attachment() {
+	let workspace = create_test_workspace!();
+
+	let project = workspace.create_project("test").unwrap().unwrap();
+	let ticket = project.create_ticket().unwrap();
+	assert_eq!(ticket.id(), 1);
+
+	assert!(ticket.attachment("test").unwrap().is_none());
+
+	ticket.upsert_attachment("test", b"test attachment").unwrap();
+
+	let attachment = ticket.attachment("test").unwrap().unwrap();
+	assert_eq!(attachment, b"test attachment");
 }

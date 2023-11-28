@@ -138,45 +138,46 @@ impl GitWorkspace {
 }
 
 /// A singular git record (a wrapper around a [`git2::Commit`]).
-#[derive(Clone, Debug)]
-pub struct GitRecord<'a>(Commit<'a>);
+#[derive(Clone)]
+pub struct GitRecord<'a>(&'a GitWorkspace, Commit<'a>);
 
 impl<'a> Hash for GitRecord<'a> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.0.id().hash(state);
-	}
-}
-
-impl<'a> From<Commit<'a>> for GitRecord<'a> {
-	#[inline]
-	fn from(commit: Commit<'a>) -> Self {
-		Self(commit)
+		self.1.id().hash(state);
 	}
 }
 
 impl<'a> PartialEq for GitRecord<'a> {
 	#[inline]
 	fn eq(&self, other: &Self) -> bool {
-		self.0.id() == other.0.id()
+		self.1.id() == other.1.id()
+	}
+}
+
+impl<'a> std::fmt::Debug for GitRecord<'a> {
+	#[inline]
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// just forward to the commit
+		self.1.fmt(f)
 	}
 }
 
 impl<'a> Eq for GitRecord<'a> {}
 
-impl Workspace for GitWorkspace {
-	type Record<'a> = GitRecord<'a>;
-	type RecordBuilder<'a> = GitRecordBuilder<'a>;
-	type Iterator<'a> = GitIterator<'a>;
-	type SetIterator<'a> = GitSetIterator<'a>;
+impl<'a> Workspace<'a> for GitWorkspace {
+	type Record = GitRecord<'a>;
+	type RecordBuilder = GitRecordBuilder<'a>;
+	type Iterator = GitIterator<'a>;
+	type SetIterator = GitSetIterator<'a>;
 
-	fn record_builder<'a>(&'a self, collection: &str) -> Self::RecordBuilder<'a> {
+	fn record_builder(&'a self, collection: &str) -> Self::RecordBuilder {
 		GitRecordBuilder::new(self, collection)
 	}
 
-	fn get_record<'a>(&'a self, id: &str) -> Result<Option<Self::Record<'a>>> {
+	fn get_record(&'a self, id: &str) -> Result<Option<Self::Record>> {
 		self.repo
 			.find_commit(Oid::from_str(id)?)
-			.map(GitRecord)
+			.map(|c| GitRecord(self, c))
 			.map(Some)
 			.or_else(|e| {
 				if e.code() == git2::ErrorCode::NotFound {
@@ -187,7 +188,7 @@ impl Workspace for GitWorkspace {
 			})
 	}
 
-	fn walk<'a>(&'a self, collection: &str) -> Result<Self::Iterator<'a>> {
+	fn walk(&'a self, collection: &str) -> Result<Self::Iterator> {
 		match self
 			.repo
 			.revparse_single(&format!("refs/heads/{collection}"))
@@ -204,27 +205,19 @@ impl Workspace for GitWorkspace {
 		}
 	}
 
-	fn set_add_unchecked<'a>(
-		&'a self,
-		collection: &str,
-		message: &str,
-	) -> Result<Self::Record<'a>> {
+	fn set_add_unchecked(&'a self, collection: &str, message: &str) -> Result<Self::Record> {
 		let mut b = self.record_builder(collection);
 		b.add_parent(self.set_add_oid);
 		b.commit(message)
 	}
 
-	fn set_del_unchecked<'a>(
-		&'a self,
-		collection: &str,
-		message: &str,
-	) -> Result<Self::Record<'a>> {
+	fn set_del_unchecked(&'a self, collection: &str, message: &str) -> Result<Self::Record> {
 		let mut b = self.record_builder(collection);
 		b.add_parent(self.set_del_oid);
 		b.commit(message)
 	}
 
-	fn walk_set<'a>(&'a self, collection: &str) -> Result<Self::SetIterator<'a>> {
+	fn walk_set(&'a self, collection: &str) -> Result<Self::SetIterator> {
 		Ok(GitSetIterator(self.walk(collection)?))
 	}
 }
@@ -243,20 +236,20 @@ impl<'a> Iterator for GitSetIterator<'a> {
 				Err(e) => return Some(Err(e)),
 			};
 
-			if commit.0.id() == self.0.0.set_add_oid || commit.0.id() == self.0.0.set_del_oid {
+			if commit.1.id() == self.0.0.set_add_oid || commit.1.id() == self.0.0.set_del_oid {
 				continue;
 			}
 
-			if !matches!(commit.0.parent_count(), 1 | 2) {
+			if !matches!(commit.1.parent_count(), 1 | 2) {
 				return Some(Err(Error::Malformed(format!(
 					"commit {} has {} parents, expected 2",
 					commit.id(),
-					commit.0.parent_count()
+					commit.1.parent_count()
 				))));
 			}
 
 			let op = commit
-				.0
+				.1
 				.parents()
 				.find(|p| p.id() == self.0.0.set_add_oid || p.id() == self.0.0.set_del_oid)
 				.map(|p| {
@@ -290,7 +283,7 @@ impl<'a> Iterator for GitIterator<'a> {
 			self.0
 				.repo
 				.find_commit(id?)
-				.map(Into::into)
+				.map(|c| GitRecord(self.0, c))
 				.map_err(Into::into)
 		})
 	}
@@ -298,34 +291,41 @@ impl<'a> Iterator for GitIterator<'a> {
 
 impl<'b> Record for GitRecord<'b> {
 	fn id(&self) -> String {
-		self.0.id().to_string()
+		self.1.id().to_string()
 	}
 
 	fn author(&self) -> String {
-		self.0
+		self.1
 			.author()
 			.name()
 			.map(|s| s.to_string())
-			.unwrap_or_else(|| String::from_utf8_lossy(self.0.author().name_bytes()).to_string())
+			.unwrap_or_else(|| String::from_utf8_lossy(self.1.author().name_bytes()).to_string())
 	}
 
 	fn email(&self) -> String {
-		self.0
+		self.1
 			.author()
 			.email()
 			.map(|s| s.to_string())
-			.unwrap_or_else(|| String::from_utf8_lossy(self.0.author().email_bytes()).to_string())
+			.unwrap_or_else(|| String::from_utf8_lossy(self.1.author().email_bytes()).to_string())
 	}
 
 	fn message(&self) -> String {
-		self.0
+		self.1
 			.message()
 			.map(|s| s.to_string())
-			.unwrap_or_else(|| String::from_utf8_lossy(self.0.message_bytes()).to_string())
+			.unwrap_or_else(|| String::from_utf8_lossy(self.1.message_bytes()).to_string())
 	}
 
 	fn timestamp(&self) -> i64 {
-		self.0.time().seconds()
+		self.1.time().seconds()
+	}
+
+	fn attachment(&self, path: &str) -> Result<Option<Vec<u8>>> {
+		let tree = self.1.tree()?;
+		let entry = tree.get_path(Path::new(path))?;
+		let blob = self.0.repo.find_blob(entry.id())?;
+		Ok(Some(blob.content().to_vec()))
 	}
 }
 
@@ -355,23 +355,23 @@ impl<'a> GitRecordBuilder<'a> {
 }
 
 impl<'a> RecordBuilder<'a> for GitRecordBuilder<'a> {
-	type Record<'b> = GitRecord<'b> where Self: 'b;
+	type Record = GitRecord<'a>;
 
-	fn upsert_attachment<D: AsRef<[u8]>>(&mut self, path: &str, data: D) -> Result<()> {
+	fn upsert_attachment<D: AsRef<[u8]>>(mut self, path: &str, data: D) -> Result<Self> {
 		self.update.upsert(
 			path,
 			self.workspace.repo.blob(data.as_ref())?,
 			git2::FileMode::Blob,
 		);
-		Ok(())
+		Ok(self)
 	}
 
-	fn remove_attachment(&mut self, path: &str) -> Result<()> {
+	fn remove_attachment(mut self, path: &str) -> Result<Self> {
 		self.update.remove(path);
-		Ok(())
+		Ok(self)
 	}
 
-	fn commit(self, message: &str) -> Result<Self::Record<'a>> {
+	fn commit(self, message: &str) -> Result<Self::Record> {
 		let ref_head = format!("refs/heads/{}", self.branch);
 
 		let head = self
@@ -455,7 +455,8 @@ impl<'a> RecordBuilder<'a> for GitRecordBuilder<'a> {
 					&format!("commit: {commit}"),
 				)?;
 
-				Ok(self.workspace.repo.find_commit(commit)?.into())
+				let commit = self.workspace.repo.find_commit(commit)?;
+				Ok(GitRecord(self.workspace, commit))
 			}
 		}
 	}

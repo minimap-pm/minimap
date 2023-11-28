@@ -65,54 +65,47 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 /// Workspaces work within the context of a user, which is already established
 /// at te time Workspace is created. This should include a name and email address.
 #[allow(clippy::type_complexity)]
-pub trait Workspace: Sized {
+pub trait Workspace<'a>: Sized
+where
+	Self: 'a,
+{
 	/// The type of record that this workspace produces.
-	type Record<'a>: Record
-	where
-		Self: 'a;
+	type Record: Record;
 	/// The type of record builder that this workspace produces.
-	type RecordBuilder<'a>: RecordBuilder<'a, Record<'a> = Self::Record<'a>>
-	where
-		Self: 'a;
+	type RecordBuilder: RecordBuilder<'a, Record = Self::Record>;
 	/// Iterates over records in a collection in **reverse** order from latest
 	/// to oldest created. Note that this isn't necessarily a timestamp
 	/// ordering, and may yield results in a different order than expected
 	/// (especially in the case of e.g. Git, which orders based on parent/child
 	/// relationships).
-	type Iterator<'a>: Iterator<Item = Result<Self::Record<'a>>>
-	where
-		Self: 'a;
+	type Iterator: Iterator<Item = Result<Self::Record>>;
 	/// Iterates over a set of records in a collection in order of creation,
 	/// returning both the record itself and the operation that was performed on it.
-	type SetIterator<'a>: Iterator<Item = Result<(Self::Record<'a>, SetOperation)>>
-	where
-		Self: 'a;
+	type SetIterator: Iterator<Item = Result<(Self::Record, SetOperation)>>;
 
 	/// Get an iterator over all records in the collection, in order from first to last.
-	fn walk<'a>(&'a self, collection: &str) -> Result<Self::Iterator<'a>>;
+	fn walk(&'a self, collection: &str) -> Result<Self::Iterator>;
 
 	/// Creates a new record builder that is used to submit a record to the workspace.
-	fn record_builder<'a>(&'a self, collection: &str) -> Self::RecordBuilder<'a>;
+	fn record_builder(&'a self, collection: &str) -> Self::RecordBuilder;
 
 	/// Returns a record based on its ID.
-	fn get_record<'a>(&'a self, id: &str) -> Result<Option<Self::Record<'a>>>;
+	fn get_record(&'a self, id: &str) -> Result<Option<Self::Record>>;
 
 	/// Returns the latest record in the collection.
-	fn latest<'a>(&'a self, collection: &str) -> Result<Option<Self::Record<'a>>> {
+	fn latest(&'a self, collection: &str) -> Result<Option<Self::Record>> {
 		self.walk(collection)?.next().transpose()
 	}
 
 	/// Adds an item to a set. Does not check if the item already exists.
-	fn set_add_unchecked<'a>(&'a self, collection: &str, message: &str)
-	-> Result<Self::Record<'a>>;
+	fn set_add_unchecked(&'a self, collection: &str, message: &str) -> Result<Self::Record>;
 
 	/// Removes an item from a set. Does not check if the item already exists.
-	fn set_del_unchecked<'a>(&'a self, collection: &str, message: &str)
-	-> Result<Self::Record<'a>>;
+	fn set_del_unchecked(&'a self, collection: &str, message: &str) -> Result<Self::Record>;
 
 	/// Get an iterator over a set of records in a collection, in order of creation.
 	/// The iterator returns both the record itself and the operation that was performed on it.
-	fn walk_set<'a>(&'a self, collection: &str) -> Result<Self::SetIterator<'a>>;
+	fn walk_set(&'a self, collection: &str) -> Result<Self::SetIterator>;
 
 	/// Gets an item in a set. After unwrapping the outer `Result`,
 	/// `Ok(record)` indicates the item exists, `Err(Some(record))`
@@ -120,11 +113,11 @@ pub trait Workspace: Sized {
 	/// from when the item was removed, and `Err(None)` indicates the
 	/// item does not exist and there is no record from when the item
 	/// was removed.
-	fn set_find<'a>(
+	fn set_find(
 		&'a self,
 		collection: &str,
 		message: &str,
-	) -> Result<::std::result::Result<Self::Record<'a>, Option<Self::Record<'a>>>> {
+	) -> Result<::std::result::Result<Self::Record, Option<Self::Record>>> {
 		for result in self.walk_set(collection)? {
 			let (record, op) = result?;
 			if record.message() == message {
@@ -143,12 +136,11 @@ pub trait Workspace: Sized {
 	/// the new record adding the item, and `removed_record` is the record
 	/// from when the item was removed (or `None` if the item did not exist).
 	/// The outer `Result` is an error if some operational error occurred.
-	fn set_add<'a>(
+	fn set_add(
 		&'a self,
 		collection: &str,
 		message: &str,
-	) -> Result<::std::result::Result<(Self::Record<'a>, Option<Self::Record<'a>>), Self::Record<'a>>>
-	{
+	) -> Result<::std::result::Result<(Self::Record, Option<Self::Record>), Self::Record>> {
 		match self.set_find(collection, message)? {
 			Ok(record) => Ok(Err(record)),
 			Err(record) => Ok(Ok((self.set_add_unchecked(collection, message)?, record))),
@@ -161,12 +153,11 @@ pub trait Workspace: Sized {
 	/// from when the item was added. If the item did not exist, returns
 	/// `Option(removed_record)`. The outer `Result` is an error if some
 	/// operational error occurred.
-	fn set_del<'a>(
+	fn set_del(
 		&'a self,
 		collection: &str,
 		message: &str,
-	) -> Result<::std::result::Result<(Self::Record<'a>, Self::Record<'a>), Option<Self::Record<'a>>>>
-	{
+	) -> Result<::std::result::Result<(Self::Record, Self::Record), Option<Self::Record>>> {
 		match self.set_find(collection, message)? {
 			Ok(record) => Ok(Ok((self.set_del_unchecked(collection, message)?, record))),
 			Err(record) => Ok(Err(record)),
@@ -174,7 +165,7 @@ pub trait Workspace: Sized {
 	}
 
 	/// Gets all items in a set.
-	fn set_get_all<'a>(&'a self, collection: &str) -> Result<IndexSet<Self::Record<'a>>> {
+	fn set_get_all(&'a self, collection: &str) -> Result<IndexSet<Self::Record>> {
 		// Since we walk backwards in time, deletions are held as gravestones (`None`)
 		// in a map, which are removed when an addition is found. If a value is in the map
 		// already, then the iteration is ignored.
@@ -211,28 +202,28 @@ pub trait Workspace: Sized {
 	}
 
 	/// Gets the name of the workspace
-	fn name(&self) -> Result<Option<Self::Record<'_>>> {
+	fn name(&'a self) -> Result<Option<Self::Record>> {
 		self.walk("meta/workspace/name")?.next().transpose()
 	}
 
 	/// Sets the name of the workspace
-	fn set_name<'a>(&'a self, name: &str) -> Result<Self::Record<'a>> {
+	fn set_name(&'a self, name: &str) -> Result<Self::Record> {
 		self.record_builder("meta/workspace/name").commit(name)
 	}
 
 	/// Gets the description of the workspace
-	fn description(&self) -> Result<Option<Self::Record<'_>>> {
+	fn description(&'a self) -> Result<Option<Self::Record>> {
 		self.walk("meta/workspace/description")?.next().transpose()
 	}
 
 	/// Sets the description of the workspace
-	fn set_description<'a>(&'a self, description: &str) -> Result<Self::Record<'a>> {
+	fn set_description(&'a self, description: &str) -> Result<Self::Record> {
 		self.record_builder("meta/workspace/description")
 			.commit(description)
 	}
 
 	/// Returns a project given its slug.
-	fn project<'a>(&'a self, slug: &str) -> Result<Project<'a, Self>> {
+	fn project(&'a self, slug: &str) -> Result<Project<'a, Self>> {
 		self.set_find("meta/projects", slug)?
 			.map_err(|_| Error::NotFound("meta/projects".to_string(), slug.to_string()))?;
 
@@ -247,10 +238,10 @@ pub trait Workspace: Sized {
 	/// Creates a project with the given slug.
 	/// If the project already exists, returns `Ok(Err(record))` with the
 	/// set record of the existing project.
-	fn create_project<'a>(
+	fn create_project(
 		&'a self,
 		slug: &str,
-	) -> Result<::std::result::Result<Project<'a, Self>, Self::Record<'a>>> {
+	) -> Result<::std::result::Result<Project<'a, Self>, Self::Record>> {
 		self.set_add("meta/projects", slug)
 			.map(|result| match result {
 				Ok(_) => Ok(Project {
@@ -265,7 +256,7 @@ pub trait Workspace: Sized {
 
 	/// Gets a ticket by its slug.
 	/// Returns [`Error::NotFound`] if either the project or ticket do not exist.
-	fn ticket<'a>(&'a self, slug: &str) -> Result<Ticket<'a, Self>> {
+	fn ticket(&'a self, slug: &str) -> Result<Ticket<'a, Self>> {
 		let (project_slug, ticket_id) = slug
 			.rsplit_once('-')
 			.ok_or_else(|| Error::Malformed(slug.to_string()))?;
@@ -281,7 +272,7 @@ pub trait Workspace: Sized {
 }
 
 /// A single record from a collection.
-pub trait Record: Clone + Sized + Hash + PartialEq + Eq {
+pub trait Record: Clone + Sized + Hash + PartialEq + Eq + std::fmt::Debug {
 	/// Gets the globally unique identifier for the record.
 	fn id(&self) -> String;
 	/// Gets the name of the author of the record.
@@ -293,25 +284,28 @@ pub trait Record: Clone + Sized + Hash + PartialEq + Eq {
 	fn message(&self) -> String;
 	/// Gets the unix timestamp of the record.
 	fn timestamp(&self) -> i64;
+	/// Gets an attachment by its name.
+	fn attachment(&self, name: &str) -> Result<Option<Vec<u8>>>;
 }
 
 /// Builds a record (with attachments) in order to submit a
 /// record to a remote collection
-pub trait RecordBuilder<'a> {
+pub trait RecordBuilder<'a>
+where
+	Self: Sized,
+{
 	/// The type of record that this record builder produces.
-	type Record<'b>: Record
-	where
-		Self: 'b;
+	type Record: Record;
 
 	/// Builds the record and submits it to the remote.
-	fn commit(self, message: &str) -> Result<Self::Record<'a>>;
+	fn commit(self, message: &str) -> Result<Self::Record>;
 
 	/// Upserts an attachment to the record.
-	fn upsert_attachment<D: AsRef<[u8]>>(&mut self, name: &str, data: D) -> Result<()>;
+	fn upsert_attachment<D: AsRef<[u8]>>(self, name: &str, data: D) -> Result<Self>;
 
 	/// Removes an attachment from the collection entirely upon record.
 	/// Future records will not contain this attachment.
-	fn remove_attachment(&mut self, name: &str) -> Result<()>;
+	fn remove_attachment(self, name: &str) -> Result<Self>;
 }
 
 /// The type of operation performed on a record in a set.
@@ -326,17 +320,14 @@ pub enum SetOperation {
 /// A Minimap project. Projects are a collection of tickets,
 /// which are a collection of comments, attachments, and other
 /// such resources.
-pub struct Project<'a, W: Workspace> {
+pub struct Project<'a, W: Workspace<'a>> {
 	workspace: &'a W,
 	slug: String,
 	meta_path: String,
 	path: String,
 }
 
-impl<'a, W: Workspace> Project<'a, W>
-where
-	W: Workspace,
-{
+impl<'a, W: Workspace<'a>> Project<'a, W> {
 	/// Gets the slug of the project.
 	#[inline]
 	pub fn slug(&self) -> &str {
@@ -344,7 +335,7 @@ where
 	}
 
 	/// Gets the name of the workspace.
-	pub fn name(&self) -> Result<Option<W::Record<'a>>> {
+	pub fn name(&self) -> Result<Option<W::Record>> {
 		self.workspace
 			.walk(&format!("{}/name", self.meta_path))?
 			.next()
@@ -352,14 +343,14 @@ where
 	}
 
 	/// Sets the name of the workspace.
-	pub fn set_name(&self, name: &str) -> Result<W::Record<'a>> {
+	pub fn set_name(&self, name: &str) -> Result<W::Record> {
 		self.workspace
 			.record_builder(&format!("{}/name", self.meta_path))
 			.commit(name)
 	}
 
 	/// Gets the description of the workspace.
-	pub fn description(&self) -> Result<Option<W::Record<'a>>> {
+	pub fn description(&self) -> Result<Option<W::Record>> {
 		self.workspace
 			.walk(&format!("{}/description", self.meta_path))?
 			.next()
@@ -367,7 +358,7 @@ where
 	}
 
 	/// Sets the description of the project.
-	pub fn set_description(&self, description: &str) -> Result<W::Record<'a>> {
+	pub fn set_description(&self, description: &str) -> Result<W::Record> {
 		self.workspace
 			.record_builder(&format!("{}/description", self.meta_path))
 			.commit(description)
@@ -438,14 +429,14 @@ where
 /// A Minimap ticket. Tickets are a collection of comments,
 /// attachments, and other such resources, and belong to a
 /// project.
-pub struct Ticket<'a, W: Workspace> {
+pub struct Ticket<'a, W: Workspace<'a>> {
 	workspace: &'a W,
 	slug: String,
 	id: u64,
 	path: String,
 }
 
-impl<'a, W: Workspace> Ticket<'a, W> {
+impl<'a, W: Workspace<'a>> Ticket<'a, W> {
 	/// Gets the slug of the ticket.
 	pub fn slug(&self) -> &str {
 		&self.slug
@@ -457,7 +448,7 @@ impl<'a, W: Workspace> Ticket<'a, W> {
 	}
 
 	/// Gets the title of the ticket.
-	pub fn title(&self) -> Result<Option<W::Record<'a>>> {
+	pub fn title(&self) -> Result<Option<W::Record>> {
 		self.workspace
 			.walk(&format!("{}/title", self.path))?
 			.next()
@@ -465,7 +456,7 @@ impl<'a, W: Workspace> Ticket<'a, W> {
 	}
 
 	/// Sets the title of the ticket.
-	pub fn set_title(&self, name: &str) -> Result<W::Record<'a>> {
+	pub fn set_title(&self, name: &str) -> Result<W::Record> {
 		self.workspace
 			.record_builder(&format!("{}/title", self.path))
 			.commit(name)
@@ -473,13 +464,44 @@ impl<'a, W: Workspace> Ticket<'a, W> {
 
 	/// Gets an iterator over all comments on the ticket,
 	/// in reverse order from latest to oldest.
-	pub fn comments(&self) -> Result<W::Iterator<'a>> {
+	pub fn comments(&self) -> Result<W::Iterator> {
 		self.workspace.walk(&format!("{}/comment", self.path))
 	}
 
-	/// Creates a record builder for a comment on the ticket.
-	pub fn comment_builder(&self) -> W::RecordBuilder<'a> {
+	/// Creates a new comment on the ticket.
+	pub fn add_comment(&self, comment: &str) -> Result<W::Record> {
 		self.workspace
 			.record_builder(&format!("{}/comment", self.path))
+			.commit(comment)
+	}
+
+	/// Creates a new attachment on the ticket.
+	pub fn upsert_attachment(&self, name: &str, data: &[u8]) -> Result<W::Record> {
+		self.workspace
+			.record_builder(&format!("{}/attachment", self.path))
+			.upsert_attachment(name, data)?
+			.commit(&format!("+{}", name))
+	}
+
+	/// Removes an attachment from the ticket.
+	pub fn remote_attachment(&self, name: &str) -> Result<W::Record> {
+		self.workspace
+			.record_builder(&format!("{}/attachment", self.path))
+			.remove_attachment(name)?
+			.commit(&format!("-{}", name))
+	}
+
+	/// Gets an attachment from the ticket.
+	pub fn attachment(&self, name: &str) -> Result<Option<Vec<u8>>> {
+		let record = self
+			.workspace
+			.walk(&format!("{}/attachment", self.path))?
+			.next()
+			.transpose()?;
+
+		match record {
+			Some(record) => record.attachment(name),
+			None => Ok(None),
+		}
 	}
 }
