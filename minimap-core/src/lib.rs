@@ -52,6 +52,9 @@ pub enum Error {
 	/// not be done).
 	#[error("malformed entity: {0}")]
 	Malformed(String),
+	/// A dependency origin slug is malformed
+	#[error("malformed dependency origin slug: {0}")]
+	MalformedOrigin(String),
 }
 
 /// The result type for all Minimap operations.
@@ -569,6 +572,73 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	pub fn is_closed(&self) -> Result<bool> {
 		Ok(self.state()?.0 == TicketState::Closed)
 	}
+
+	/// Adds a dependency for the ticket.
+	///
+	/// Dependencies are tuples of `(origin, endpoint)`,
+	/// where the origin is a slug of some external service
+	/// (e.g. `minimap`, `github`, `gitlab`, etc.), and the
+	/// endpoint is some unique identifier, the format of which
+	/// is dependent on the origin type.
+	///
+	/// The special `_` origin refers to the current workspace,
+	/// and can be used with a `project-#` (ticket slug) endpoint to
+	/// create dependencies on other tickets in the same workspace.
+	///
+	/// Returns the record of the dependency addition if created,
+	/// or the record of the existing dependency if it already exists.
+	pub fn add_dependency(&self, origin: &str, endpoint: &str) -> Result<R::Record> {
+		validate_origin(origin)?;
+
+		self.remote
+			.set_add(
+				&format!("{}/dependencies", self.path),
+				&format!("{}@{}", origin, endpoint),
+			)?
+			.map_or_else(Ok, |(r, _)| Ok(r))
+	}
+
+	/// Removes a dependency from the ticket.
+	///
+	/// See [`add_dependency`] for more information on dependencies.
+	///
+	/// Returns the record of the dependency removal if created,
+	/// or None if the dependency did not exist.
+	pub fn remove_dependency(&self, origin: &str, endpoint: &str) -> Result<Option<R::Record>> {
+		validate_origin(origin)?;
+
+		self.remote
+			.set_del(
+				&format!("{}/dependencies", self.path),
+				&format!("{}@{}", origin, endpoint),
+			)?
+			.map_or_else(|_| Ok(None), |(r, _)| Ok(Some(r)))
+	}
+
+	/// Lists all dependencies for the ticket.
+	///
+	/// See [`add_dependency`] for more information on dependencies.
+	pub fn dependencies(&self) -> Result<IndexSet<(String, String)>> {
+		self.remote
+			.set_get_all(&format!("{}/dependencies", self.path))?
+			.into_iter()
+			.map(|r| {
+				let message = r.message();
+				let (origin, endpoint) = message
+					.split_once('@')
+					.ok_or_else(|| Error::Malformed(format!("{}/dependencies", self.path)))?;
+				Ok((origin.to_string(), endpoint.to_string()))
+			})
+			.collect()
+	}
+}
+
+fn validate_origin(origin: &str) -> Result<()> {
+	if origin.contains('@') {
+		return Err(Error::MalformedOrigin(origin.to_string()));
+	}
+
+	Ok(())
 }
 
 /// The status of a ticket.

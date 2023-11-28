@@ -380,3 +380,49 @@ fn test_ticket_state() {
 	assert!(ticket2.is_open().unwrap());
 	assert!(ticket.is_closed().unwrap());
 }
+
+#[test]
+fn test_ticket_dependency() {
+	let workspace = Workspace::open(create_test_remote!());
+
+	let project = workspace.create_project("test").unwrap().unwrap();
+	let ticket = project.create_ticket().unwrap();
+
+	let record1 = ticket.add_dependency("_", "foo-1").unwrap();
+	let record2 = ticket.add_dependency("ext", "foo-1").unwrap();
+
+	assert_ne!(record1.id(), record2.id());
+
+	let record3 = ticket.add_dependency("_", "foo-1").unwrap();
+	let record4 = ticket.add_dependency("_", "foo-2").unwrap();
+
+	assert_eq!(record3.id(), record1.id());
+	assert_ne!(record4.id(), record1.id());
+
+	let record5 = ticket.add_dependency("ext", "foo-1").unwrap();
+	let record6 = ticket.add_dependency("ext", "foo-2").unwrap();
+	assert_eq!(record5.id(), record2.id());
+	assert_ne!(record6.id(), record2.id());
+
+	let record7 = ticket.add_dependency("invalid@foo", "baz").unwrap_err();
+	match record7 {
+		Error::MalformedOrigin(m) => assert_eq!(m, "invalid@foo".to_string()),
+		_ => panic!("unexpected error: {:?}", record7),
+	}
+
+	let record8 = ticket.remove_dependency("_", "foo-2").unwrap();
+	assert!(record8.is_some());
+
+	let record9 = ticket.remove_dependency("_", "foo-none").unwrap();
+	assert!(record9.is_none());
+
+	let record10 = ticket.remove_dependency("ext", "foo-2").unwrap();
+	assert!(record10.is_some());
+
+	// now go through the dependencies and make sure all the ones we didn't remove
+	// are still there.
+	let deps = ticket.dependencies().unwrap();
+	assert_eq!(deps.len(), 2);
+	assert!(deps.contains(&("_".to_string(), "foo-1".to_string())));
+	assert!(deps.contains(&("ext".to_string(), "foo-1".to_string())));
+}
