@@ -88,6 +88,7 @@ where
 	fn get_record(&'a self, id: &str) -> Result<Option<Self::Record>>;
 
 	/// Returns the latest record in the collection.
+	#[inline]
 	fn latest(&'a self, collection: &str) -> Result<Option<Self::Record>> {
 		self.walk(collection)?.next().transpose()
 	}
@@ -234,7 +235,7 @@ where
 
 	/// Gets the name of the workspace
 	pub fn name(&'a self) -> Result<Option<R::Record>> {
-		self.remote.walk("meta/workspace/name")?.next().transpose()
+		self.remote.latest("meta/workspace/name")
 	}
 
 	/// Sets the name of the workspace
@@ -246,10 +247,7 @@ where
 
 	/// Gets the description of the workspace
 	pub fn description(&'a self) -> Result<Option<R::Record>> {
-		self.remote
-			.walk("meta/workspace/description")?
-			.next()
-			.transpose()
+		self.remote.latest("meta/workspace/description")
 	}
 
 	/// Sets the description of the workspace
@@ -375,10 +373,7 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 
 	/// Gets the name of the workspace.
 	pub fn name(&self) -> Result<Option<R::Record>> {
-		self.remote
-			.walk(&format!("{}/name", self.meta_path))?
-			.next()
-			.transpose()
+		self.remote.latest(&format!("{}/name", self.meta_path))
 	}
 
 	/// Sets the name of the workspace.
@@ -391,9 +386,7 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 	/// Gets the description of the workspace.
 	pub fn description(&self) -> Result<Option<R::Record>> {
 		self.remote
-			.walk(&format!("{}/description", self.meta_path))?
-			.next()
-			.transpose()
+			.latest(&format!("{}/description", self.meta_path))
 	}
 
 	/// Sets the description of the project.
@@ -413,9 +406,7 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 		let ticket_counter_path = format!("{}/ticket_counter", self.meta_path);
 		let ticket_counter = self
 			.remote
-			.walk(&ticket_counter_path)?
-			.next()
-			.transpose()?
+			.latest(&ticket_counter_path)?
 			.map(|record| {
 				record
 					.message()
@@ -488,10 +479,7 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 
 	/// Gets the title of the ticket.
 	pub fn title(&self) -> Result<Option<R::Record>> {
-		self.remote
-			.walk(&format!("{}/title", self.path))?
-			.next()
-			.transpose()
+		self.remote.latest(&format!("{}/title", self.path))
 	}
 
 	/// Sets the title of the ticket.
@@ -532,11 +520,7 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 
 	/// Gets an attachment from the ticket.
 	pub fn attachment(&self, name: &str) -> Result<Option<Vec<u8>>> {
-		let record = self
-			.remote
-			.walk(&format!("{}/attachment", self.path))?
-			.next()
-			.transpose()?;
+		let record = self.remote.latest(&format!("{}/attachment", self.path))?;
 
 		match record {
 			Some(record) => record.attachment(name),
@@ -550,9 +534,7 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	/// returned.
 	pub fn state(&self) -> Result<(TicketState, Option<R::Record>)> {
 		self.remote
-			.walk(&format!("{}/state", self.path))?
-			.next()
-			.transpose()?
+			.latest(&format!("{}/state", self.path))?
 			.map_or_else(
 				|| Ok((TicketState::Open, None)),
 				|record| {
