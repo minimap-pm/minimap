@@ -1,0 +1,48 @@
+name: Test Core
+on:
+  push:
+    # FIXME(qix-): DRY this up when\b\bif actions/runner#1182 is ever fixed.
+    paths:
+      - '.github/workflows/test-core.yml'
+      - 'minimap-core/**'
+      - '.rustfmt.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  pull_request:
+    paths:
+      - '.github/workflows/test-core.yml'
+      - 'minimap-core/**'
+      - '.rustfmt.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+jobs:
+  build:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Install toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-x86_64-unknown-linux-gnu
+          components: rustfmt, clippy, llvm-tools-preview
+          default: true
+      - name: Cache build artifacts
+        uses: actions/cache@v3
+        with:
+          path: target/
+          key: minimap-core-target
+      - name: Lint
+        run: cargo fmt --all --check
+      - name: Build <D>
+        run: cargo build --profile=dev -p minimap-core
+      - name: Build <R>
+        run: cargo build --profile=release -p minimap-core
+      - name: Clippy <D>
+        run: cargo clippy -p minimap-core --tests -- -D clippy::all
+      - name: Clippy <R>
+        run: cargo clippy -p minimap-core --tests --release -- -D clippy::all
+      - name: Test
+        run: cargo test -p minimap-core
