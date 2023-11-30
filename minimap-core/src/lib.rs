@@ -66,6 +66,9 @@ pub enum Error {
 	/// The endpoint is malformed
 	#[error("malformed dependency endpoint: {0}")]
 	MalformedEndpoint(String),
+	/// The project slug is malformed
+	#[error("malformed project slug: {0}")]
+	MalformedProjectSlug(String),
 }
 
 /// The result type for all Minimap operations.
@@ -344,10 +347,14 @@ where
 	/// Creates a project with the given slug.
 	/// If the project already exists, returns `Ok(Err(record))` with the
 	/// set record of the existing project.
+	///
+	/// Project slugs cannot have `/` or whitespace characters.
 	pub fn create_project(
 		&'a self,
 		slug: &str,
 	) -> Result<::std::result::Result<Project<'a, R>, R::Record>> {
+		validate_project_slug(slug)?;
+
 		self.remote
 			.set_add("meta/projects", slug)
 			.map(|result| match result {
@@ -375,6 +382,27 @@ where
 			.map_err(|_| Error::Malformed(slug.to_string()))?;
 
 		project.ticket(ticket_id)
+	}
+
+	/// **Soft-deletes** a project given its slug.
+	///
+	/// **NOTE:** Re-creating a project with the same slug will
+	/// **re-enable** the project, and all tickets will be restored.
+	///
+	/// After unwrapping the outer error, returns `Ok(record)` with the
+	/// newly created set delete record, `Err(Some(record))` with the deletion
+	/// record if the project was already deleted, or `Err(None)` if the project
+	/// never existed.
+	pub fn delete_project(
+		&'a self,
+		slug: &str,
+	) -> Result<std::result::Result<R::Record, Option<R::Record>>> {
+		self.remote
+			.set_del("meta/projects", slug)
+			.map(|result| match result {
+				Ok((removed, _)) => Ok(removed),
+				Err(record) => Err(record),
+			})
 	}
 }
 
@@ -432,6 +460,15 @@ pub struct Project<'a, R: Remote<'a>> {
 	slug: String,
 	meta_path: String,
 	path: String,
+}
+
+fn validate_project_slug(slug: &str) -> Result<()> {
+	// Slugs cannot have `/` or whitespace characters.
+	if slug.contains('/') || slug.contains(char::is_whitespace) {
+		return Err(Error::MalformedProjectSlug(slug.to_string()));
+	}
+
+	Ok(())
 }
 
 impl<'a, R: Remote<'a>> Project<'a, R> {
@@ -532,6 +569,45 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 			id,
 			path: format!("{}/ticket/{}", self.path, id),
 		})
+	}
+
+	/// Creates a (sub)-project with the given slug.
+	/// If the project already exists, returns `Ok(Err(record))` with the
+	/// set record of the existing project.
+	///
+	/// Project slugs cannot have `/` or whitespace characters, and despite
+	/// being a sub-project (where the `self` project is the parent of the
+	/// new project), the project slug must be unique to the workspace.
+	pub fn create_project(
+		&self,
+		slug: &str,
+	) -> Result<::std::result::Result<Project<'a, R>, R::Record>> {
+		let project = match self.workspace.create_project(slug)? {
+			Ok(project) => project,
+			Err(record) => return Ok(Err(record)),
+		};
+
+		self.workspace
+			.remote
+			.record_builder(&format!("{}/parent", project.meta_path))
+			.commit(&self.slug)?;
+
+		Ok(Ok(project))
+	}
+
+	/// Gets the parent project of this project, or `None`
+	/// if the project is a root project.
+	pub fn parent(&self) -> Result<Option<Project<'a, R>>> {
+		self.workspace
+			.remote
+			.latest(&format!("{}/parent", self.meta_path))?
+			.map_or_else(
+				|| Ok(None),
+				|record| {
+					let slug = record.message();
+					Ok(Some(self.workspace.project(&slug)?))
+				},
+			)
 	}
 }
 

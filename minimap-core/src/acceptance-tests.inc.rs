@@ -239,10 +239,18 @@ fn test_project() {
 	assert_eq!(project.name().unwrap(), None);
 	assert_eq!(project.description().unwrap(), None);
 
+	assert!(workspace.create_project("test").unwrap().is_err());
+
 	let record = project.set_name("test").unwrap();
 	assert_eq!(record.message(), "test");
 	let record = project.set_description("test description").unwrap();
 	assert_eq!(record.message(), "test description");
+
+	workspace.delete_project("test").unwrap().unwrap();
+	workspace.delete_project("test").unwrap().unwrap_err();
+
+	workspace.create_project("test").unwrap().unwrap();
+	assert!(workspace.create_project("test").unwrap().is_err());
 }
 
 #[test]
@@ -476,4 +484,25 @@ fn test_self_dependencies() {
 		assert_eq!(endpoint, "test-2");
 		assert_eq!(status, DependencyStatus::Complete);
 	}
+}
+
+#[test]
+fn test_subprojects() {
+	let workspace = Workspace::open(create_test_remote!());
+
+	let project = workspace.create_project("test").unwrap().unwrap();
+	let subproject = project.create_project("sub").unwrap().unwrap();
+	let ticket = project.create_ticket().unwrap();
+	let subticket = subproject.create_ticket().unwrap();
+
+	assert_eq!(ticket.id(), 1);
+	assert_eq!(subticket.id(), 1);
+
+	assert!(project.parent().unwrap().is_none());
+	assert!(subproject.parent().unwrap().is_some());
+	assert_eq!(subproject.parent().unwrap().unwrap().slug(), "test");
+
+	assert_eq!(subproject.slug(), "sub");
+
+	assert_eq!(workspace.ticket("sub-1").unwrap().slug(), "sub-1");
 }
