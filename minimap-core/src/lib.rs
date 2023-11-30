@@ -37,7 +37,7 @@ pub enum Error {
 	/// bizarre reason), we return `NotPushed` instead.
 	#[error("a push operation succeeded, but a ref was not pushed: {0}")]
 	NotPushed(String),
-	/// See [`NotPushed`].
+	/// See [`Error::NotPushed`].
 	#[error("failed to push ref {0}: {1}")]
 	PushFailed(String, String),
 	/// A fetch or commit operation couldn't find the entity on which
@@ -788,7 +788,7 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 
 	/// Removes a dependency from the ticket.
 	///
-	/// See [`add_dependency`] for more information on dependencies.
+	/// See [`Ticket::add_dependency`] for more information on dependencies.
 	///
 	/// Returns the record of the dependency removal if created,
 	/// or None if the dependency did not exist.
@@ -806,7 +806,7 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 
 	/// Lists all dependencies for the ticket.
 	///
-	/// See [`add_dependency`] for more information on dependencies.
+	/// See [`Ticket::add_dependency`] for more information on dependencies.
 	pub fn dependencies(&self) -> Result<IndexSet<(String, String)>> {
 		self.workspace
 			.remote
