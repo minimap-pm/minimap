@@ -497,13 +497,16 @@ mod test {
 		}};
 	}
 
-	fn create_test_remote(test_name: String) -> GitRemote {
+	fn get_remote_uri(test_name: String) -> (PathBuf, String) {
 		let mut path = ::std::env::temp_dir();
 		path.push("minimap-test");
 		path.push(test_name);
-		let remote_uri = format!("file://{}", path.display());
+		let uri = format!("file://{}", path.display());
+		(path, uri)
+	}
 
-		::std::fs::remove_dir_all(&path)
+	fn init_test_remote(path: &PathBuf, remote_uri: &str) -> GitRemote {
+		::std::fs::remove_dir_all(path)
 			.or_else(|e| {
 				if e.kind() == ::std::io::ErrorKind::NotFound {
 					Ok(())
@@ -513,7 +516,7 @@ mod test {
 			})
 			.unwrap();
 
-		let tmp_path = generate_tmp_dir(&remote_uri).unwrap();
+		let tmp_path = generate_tmp_dir(remote_uri).unwrap();
 		::std::fs::remove_dir_all(&tmp_path)
 			.or_else(|e| {
 				if e.kind() == ::std::io::ErrorKind::NotFound {
@@ -524,7 +527,7 @@ mod test {
 			})
 			.unwrap();
 
-		Repository::init_bare(&path).unwrap();
+		Repository::init_bare(path).unwrap();
 
 		// Init the test repository and set the user.name and
 		// user.email config values since there's no guarantee
@@ -543,19 +546,89 @@ mod test {
 		// We also have to manually create the 'origin' remote.
 		// This is normally done by the clone operation, but
 		// since we're not cloning, we have to do it ourselves.
-		repo.remote_set_url("origin", &remote_uri).unwrap();
+		repo.remote_set_url("origin", remote_uri).unwrap();
 
-		GitRemote::open(&remote_uri).unwrap()
+		GitRemote::open(remote_uri).unwrap()
+	}
+
+	fn create_test_remote(test_name: String) -> GitRemote {
+		let (path, remote_uri) = get_remote_uri(test_name);
+		init_test_remote(&path, &remote_uri)
 	}
 
 	macro_rules! create_test_remote {
 		() => {
 			create_test_remote(function!().to_string())
 		};
-		($name:literal) => {
-			create_test_remote($name.to_string())
+		($suffix:literal) => {
+			create_test_remote(format!("{}-{}", function!(), $suffix))
 		};
 	}
 
 	include!("../acceptance-tests.inc.rs");
+
+	#[test]
+	fn test_remote_minimap_dependencies() {
+		let our_workspace = Workspace::open(create_test_remote!());
+		let (their_path, their_remote_uri) = get_remote_uri(format!("{}-other", function!()));
+		let their_workspace = Workspace::open(init_test_remote(&their_path, &their_remote_uri));
+
+		let our_project = our_workspace.create_project("test").unwrap().unwrap();
+		let their_project = their_workspace.create_project("other").unwrap().unwrap();
+
+		let our_ticket = our_project.create_ticket().unwrap();
+		let their_ticket = their_project.create_ticket().unwrap();
+
+		assert_eq!(our_ticket.id(), 1);
+		assert_eq!(their_ticket.id(), 1);
+
+		our_ticket
+			.add_dependency(
+				"minimap",
+				&format!("{}@{}", their_remote_uri, their_ticket.slug()),
+			)
+			.unwrap();
+
+		assert_eq!(our_ticket.dependencies().unwrap().len(), 1);
+
+		let registry = DependencyRegistry::new();
+
+		let mut found = false;
+		for (origin, endpoint, status) in our_ticket
+			.resolve_dependencies(&registry)
+			.unwrap()
+			.map(|d| d.unwrap())
+		{
+			assert!(!found);
+			found = true;
+			assert_eq!(origin, "minimap");
+			assert_eq!(
+				endpoint,
+				format!("{}@{}", their_remote_uri, their_ticket.slug())
+			);
+			assert_eq!(status, DependencyStatus::Pending);
+		}
+
+		assert!(found);
+
+		their_ticket.set_state(TicketState::Closed).unwrap();
+
+		let mut found = false;
+		for (origin, endpoint, status) in our_ticket
+			.resolve_dependencies(&registry)
+			.unwrap()
+			.map(|d| d.unwrap())
+		{
+			assert!(!found);
+			found = true;
+			assert_eq!(origin, "minimap");
+			assert_eq!(
+				endpoint,
+				format!("{}@{}", their_remote_uri, their_ticket.slug())
+			);
+			assert_eq!(status, DependencyStatus::Complete);
+		}
+
+		assert!(found)
+	}
 }

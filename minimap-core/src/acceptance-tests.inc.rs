@@ -6,7 +6,8 @@
 //
 // ```rust
 // macro_rules! create_test_remote {
-//     () => (Myworkspace::new())
+//     () => (MyRemote::open("some/default"));
+//     ($suffix:expr) => (MyWorkspace(format!("some/default/{suffix}")));
 // }
 //
 // include!("acceptance-tests.inc.rs");
@@ -182,6 +183,14 @@ fn test_set_get_all() {
 	assert_eq!(records[2].message(), "test5");
 	assert_eq!(records[3].message(), "test6");
 	assert_eq!(records[4].message(), "test3");
+
+	let records = workspace.remote().set_get_all_reverse("coll").unwrap();
+	assert_eq!(records.len(), 5);
+	assert_eq!(records[0].message(), "test3");
+	assert_eq!(records[1].message(), "test6");
+	assert_eq!(records[2].message(), "test5");
+	assert_eq!(records[3].message(), "test2");
+	assert_eq!(records[4].message(), "test");
 }
 
 #[test]
@@ -425,4 +434,46 @@ fn test_ticket_dependency() {
 	assert_eq!(deps.len(), 2);
 	assert!(deps.contains(&("_".to_string(), "foo-1".to_string())));
 	assert!(deps.contains(&("ext".to_string(), "foo-1".to_string())));
+}
+
+#[test]
+fn test_self_dependencies() {
+	let workspace = Workspace::open(create_test_remote!());
+
+	let project = workspace.create_project("test").unwrap().unwrap();
+	let ticket = project.create_ticket().unwrap();
+	let ticket2 = project.create_ticket().unwrap();
+	assert_eq!(ticket.id(), 1);
+	assert_eq!(ticket2.id(), 2);
+
+	ticket.add_dependency("_", "test-2").unwrap();
+
+	let deps = ticket.dependencies().unwrap();
+	assert_eq!(deps.len(), 1);
+	assert!(deps.contains(&("_".to_string(), "test-2".to_string())));
+
+	let deps = ticket2.dependencies().unwrap();
+	assert_eq!(deps.len(), 0);
+
+	let registry = DependencyRegistry::new();
+	let mut found = false;
+	for (origin, endpoint, status) in ticket.resolve_dependencies(&registry).unwrap().map(|r| r.unwrap()) {
+		assert!(!found);
+		found = true;
+		assert_eq!(origin, "_");
+		assert_eq!(endpoint, "test-2");
+		assert_eq!(status, DependencyStatus::Pending);
+	}
+	assert!(found);
+
+	ticket2.set_state(TicketState::Closed).unwrap();
+
+	let mut found = false;
+	for (origin, endpoint, status) in ticket.resolve_dependencies(&registry).unwrap().map(|r| r.unwrap()) {
+		assert!(!found);
+		found = true;
+		assert_eq!(origin, "_");
+		assert_eq!(endpoint, "test-2");
+		assert_eq!(status, DependencyStatus::Complete);
+	}
 }

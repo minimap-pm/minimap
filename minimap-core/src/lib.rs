@@ -7,14 +7,16 @@
 //! struct.
 #![deny(missing_docs, unsafe_code)]
 
+pub(crate) mod deps;
 pub(crate) mod remote;
 
+pub use deps::*;
 #[cfg(feature = "git")]
 pub use remote::git::*;
 pub use remote::memory::*;
 
 use indexmap::{IndexMap, IndexSet};
-use std::{hash::Hash, marker::PhantomData};
+use std::{collections::HashSet, hash::Hash, marker::PhantomData};
 
 /// The error type for all Minimap operations.
 #[derive(Debug, thiserror::Error)]
@@ -55,6 +57,15 @@ pub enum Error {
 	/// A dependency origin slug is malformed
 	#[error("malformed dependency origin slug: {0}")]
 	MalformedOrigin(String),
+	/// The origin slug does not exist.
+	#[error("unknown dependency origin: {0}")]
+	UnknownOrigin(String),
+	/// An error occurred interacting with an origin.
+	#[error("dependency origin error: {0}")]
+	Origin(Box<dyn std::error::Error>),
+	/// The endpoint is malformed
+	#[error("malformed dependency endpoint: {0}")]
+	MalformedEndpoint(String),
 }
 
 /// The result type for all Minimap operations.
@@ -165,7 +176,7 @@ where
 		}
 	}
 
-	/// Gets all items in a set.
+	/// Gets all items in a set in order from oldest to latest.
 	fn set_get_all(&'a self, collection: &str) -> Result<IndexSet<Self::Record>> {
 		// Since we walk backwards in time, deletions are held as gravestones (`None`)
 		// in a map, which are removed when an addition is found. If a value is in the map
@@ -200,6 +211,62 @@ where
 		}
 
 		Ok(r)
+	}
+
+	/// Gets all items in a set in order from latest to oldest.
+	fn set_get_all_reverse(&'a self, collection: &str) -> Result<IndexSet<Self::Record>> {
+		let mut set = IndexSet::new();
+		for item in self.walk_set_present(collection)? {
+			set.insert(item?);
+		}
+		Ok(set)
+	}
+
+	/// Returns a set iterator that yields only present records in the set.
+	/// This is different from `walk_set()` in that it does not return
+	/// records that have been deleted, doesn't return the operation,
+	/// and doesn't return a set item more than once (e.g. in the case
+	/// the item was added, removed, and then re-added).
+	fn walk_set_present(&'a self, collection: &str) -> Result<SetWalkIterator<'a, Self>> {
+		Ok(SetWalkIterator {
+			inner: self.walk_set(collection)?,
+			map: HashSet::new(),
+		})
+	}
+}
+
+/// An iterator over set items, yielding only items that are present in the set.
+/// Does not return the same set item more than once.
+pub struct SetWalkIterator<'a, R: Remote<'a>> {
+	inner: R::SetIterator,
+	map: HashSet<String>,
+}
+
+impl<'a, R: Remote<'a>> Iterator for SetWalkIterator<'a, R> {
+	type Item = Result<R::Record>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			let (record, op) = match self.inner.next() {
+				Some(result) => match result {
+					Ok(result) => result,
+					Err(err) => return Some(Err(err)),
+				},
+				None => return None,
+			};
+
+			let message = record.message();
+
+			if self.map.contains(&message) {
+				continue;
+			}
+
+			self.map.insert(message.clone());
+
+			if op == SetOperation::Add {
+				return Some(Ok(record));
+			}
+		}
 	}
 }
 
@@ -267,7 +334,7 @@ where
 			.map_err(|_| Error::NotFound("meta/projects".to_string(), slug.to_string()))?;
 
 		Ok(Project {
-			remote: &self.remote,
+			workspace: self,
 			slug: slug.to_string(),
 			meta_path: format!("meta/project/{}", slug),
 			path: format!("project/{}", slug),
@@ -285,7 +352,7 @@ where
 			.set_add("meta/projects", slug)
 			.map(|result| match result {
 				Ok(_) => Ok(Project {
-					remote: &self.remote,
+					workspace: self,
 					slug: slug.to_string(),
 					meta_path: format!("meta/project/{}", slug),
 					path: format!("project/{}", slug),
@@ -361,7 +428,7 @@ pub enum SetOperation {
 /// which are a collection of comments, attachments, and other
 /// such resources.
 pub struct Project<'a, R: Remote<'a>> {
-	remote: &'a R,
+	workspace: &'a Workspace<'a, R>,
 	slug: String,
 	meta_path: String,
 	path: String,
@@ -376,25 +443,30 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 
 	/// Gets the name of the workspace.
 	pub fn name(&self) -> Result<Option<R::Record>> {
-		self.remote.latest(&format!("{}/name", self.meta_path))
+		self.workspace
+			.remote
+			.latest(&format!("{}/name", self.meta_path))
 	}
 
 	/// Sets the name of the workspace.
 	pub fn set_name(&self, name: &str) -> Result<R::Record> {
-		self.remote
+		self.workspace
+			.remote
 			.record_builder(&format!("{}/name", self.meta_path))
 			.commit(name)
 	}
 
 	/// Gets the description of the workspace.
 	pub fn description(&self) -> Result<Option<R::Record>> {
-		self.remote
+		self.workspace
+			.remote
 			.latest(&format!("{}/description", self.meta_path))
 	}
 
 	/// Sets the description of the project.
 	pub fn set_description(&self, description: &str) -> Result<R::Record> {
-		self.remote
+		self.workspace
+			.remote
 			.record_builder(&format!("{}/description", self.meta_path))
 			.commit(description)
 	}
@@ -408,6 +480,7 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 		// The ticket counter is not a set, it's just a running count.
 		let ticket_counter_path = format!("{}/ticket_counter", self.meta_path);
 		let ticket_counter = self
+			.workspace
 			.remote
 			.latest(&ticket_counter_path)?
 			.map(|record| {
@@ -426,17 +499,19 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 		// count if the tickets set add fails, which is fine - because in the inverse cass (where
 		// we increment after we add to the set, but the increment fails), the next time a ticket
 		// is created we'll get a malformed collection error.
-		self.remote
+		self.workspace
+			.remote
 			.record_builder(&ticket_counter_path)
 			.commit(&ticket_id.to_string())?;
 
 		// Now, create the ticket in the project/tickets set.
-		self.remote
+		self.workspace
+			.remote
 			.set_add(&format!("{}/tickets", self.path), &ticket_id.to_string())?
 			.map_err(|_| Error::Malformed(format!("{}/tickets", self.path)))?;
 
 		Ok(Ticket {
-			remote: self.remote,
+			workspace: self.workspace,
 			slug: ticket_slug,
 			id: ticket_id,
 			path: format!("{}/ticket/{}", self.path, ticket_id),
@@ -446,12 +521,13 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 	/// Gets a ticket by its ID.
 	pub fn ticket(&self, id: u64) -> Result<Ticket<'a, R>> {
 		// First, check if the ticket exists.
-		self.remote
+		self.workspace
+			.remote
 			.set_find(&format!("{}/tickets", self.path), &id.to_string())?
 			.map_err(|_| Error::NotFound(format!("{}/tickets", self.path), id.to_string()))?;
 
 		Ok(Ticket {
-			remote: self.remote,
+			workspace: self.workspace,
 			slug: format!("{}-{}", self.slug, id),
 			id,
 			path: format!("{}/ticket/{}", self.path, id),
@@ -463,7 +539,7 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 /// attachments, and other such resources, and belong to a
 /// project.
 pub struct Ticket<'a, R: Remote<'a>> {
-	remote: &'a R,
+	workspace: &'a Workspace<'a, R>,
 	slug: String,
 	id: u64,
 	path: String,
@@ -482,12 +558,15 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 
 	/// Gets the title of the ticket.
 	pub fn title(&self) -> Result<Option<R::Record>> {
-		self.remote.latest(&format!("{}/title", self.path))
+		self.workspace
+			.remote
+			.latest(&format!("{}/title", self.path))
 	}
 
 	/// Sets the title of the ticket.
 	pub fn set_title(&self, name: &str) -> Result<R::Record> {
-		self.remote
+		self.workspace
+			.remote
 			.record_builder(&format!("{}/title", self.path))
 			.commit(name)
 	}
@@ -495,19 +574,23 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	/// Gets an iterator over all comments on the ticket,
 	/// in reverse order from latest to oldest.
 	pub fn comments(&self) -> Result<R::Iterator> {
-		self.remote.walk(&format!("{}/comment", self.path))
+		self.workspace
+			.remote
+			.walk(&format!("{}/comment", self.path))
 	}
 
 	/// Creates a new comment on the ticket.
 	pub fn add_comment(&self, comment: &str) -> Result<R::Record> {
-		self.remote
+		self.workspace
+			.remote
 			.record_builder(&format!("{}/comment", self.path))
 			.commit(comment)
 	}
 
 	/// Creates a new attachment on the ticket.
 	pub fn upsert_attachment(&self, name: &str, data: &[u8]) -> Result<R::Record> {
-		self.remote
+		self.workspace
+			.remote
 			.record_builder(&format!("{}/attachment", self.path))
 			.upsert_attachment(name, data)?
 			.commit(&format!("+{}", name))
@@ -515,7 +598,8 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 
 	/// Removes an attachment from the ticket.
 	pub fn remote_attachment(&self, name: &str) -> Result<R::Record> {
-		self.remote
+		self.workspace
+			.remote
 			.record_builder(&format!("{}/attachment", self.path))
 			.remove_attachment(name)?
 			.commit(&format!("-{}", name))
@@ -523,7 +607,10 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 
 	/// Gets an attachment from the ticket.
 	pub fn attachment(&self, name: &str) -> Result<Option<Vec<u8>>> {
-		let record = self.remote.latest(&format!("{}/attachment", self.path))?;
+		let record = self
+			.workspace
+			.remote
+			.latest(&format!("{}/attachment", self.path))?;
 
 		match record {
 			Some(record) => record.attachment(name),
@@ -536,7 +623,8 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	/// record is None. Otherwise, the latest state change record is
 	/// returned.
 	pub fn state(&self) -> Result<(TicketState, Option<R::Record>)> {
-		self.remote
+		self.workspace
+			.remote
 			.latest(&format!("{}/state", self.path))?
 			.map_or_else(
 				|| Ok((TicketState::Open, None)),
@@ -553,7 +641,8 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 
 	/// Sets the state of a ticket.
 	pub fn set_state(&self, state: TicketState) -> Result<R::Record> {
-		self.remote
+		self.workspace
+			.remote
 			.record_builder(&format!("{}/state", self.path))
 			.commit(match state {
 				TicketState::Open => "open",
@@ -590,7 +679,8 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	pub fn add_dependency(&self, origin: &str, endpoint: &str) -> Result<R::Record> {
 		validate_origin(origin)?;
 
-		self.remote
+		self.workspace
+			.remote
 			.set_add(
 				&format!("{}/dependencies", self.path),
 				&format!("{}@{}", origin, endpoint),
@@ -607,7 +697,8 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	pub fn remove_dependency(&self, origin: &str, endpoint: &str) -> Result<Option<R::Record>> {
 		validate_origin(origin)?;
 
-		self.remote
+		self.workspace
+			.remote
 			.set_del(
 				&format!("{}/dependencies", self.path),
 				&format!("{}@{}", origin, endpoint),
@@ -619,7 +710,8 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	///
 	/// See [`add_dependency`] for more information on dependencies.
 	pub fn dependencies(&self) -> Result<IndexSet<(String, String)>> {
-		self.remote
+		self.workspace
+			.remote
 			.set_get_all(&format!("{}/dependencies", self.path))?
 			.into_iter()
 			.map(|r| {
@@ -631,6 +723,22 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 			})
 			.collect()
 	}
+
+	/// Returns an iterator over all dependencies for the ticket,
+	/// each iteration resolving the dependency's status.
+	pub fn resolve_dependencies<D: DependencyResolver>(
+		&self,
+		resolver: &'a D,
+	) -> Result<TicketDependencyIterator<'a, R, D>> {
+		let path = format!("{}/dependencies", self.path);
+		let inner = self.workspace.remote.walk_set_present(&path)?;
+		Ok(TicketDependencyIterator {
+			workspace: self.workspace,
+			path,
+			inner,
+			resolver,
+		})
+	}
 }
 
 fn validate_origin(origin: &str) -> Result<()> {
@@ -641,6 +749,37 @@ fn validate_origin(origin: &str) -> Result<()> {
 	Ok(())
 }
 
+/// An iterator over a ticket's dependencies that resolves
+/// the status of each dependency.
+pub struct TicketDependencyIterator<'a, R: Remote<'a>, D: DependencyResolver> {
+	workspace: &'a Workspace<'a, R>,
+	path: String,
+	inner: SetWalkIterator<'a, R>,
+	resolver: &'a D,
+}
+
+impl<'a, R: Remote<'a>, D: DependencyResolver> Iterator for TicketDependencyIterator<'a, R, D> {
+	type Item = Result<(String, String, DependencyStatus)>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// parse the next dependency in the set
+		let message = self.inner.next()?.ok()?.message();
+		let (origin, endpoint) = message
+			.split_once('@')
+			.ok_or_else(|| Error::Malformed(self.path.clone()))
+			.ok()?;
+
+		if origin == "_" {
+			let ticket = self.workspace.ticket(endpoint).ok()?;
+			let state = ticket.state().ok()?.0.into();
+			return Some(Ok((origin.to_string(), endpoint.to_string(), state)));
+		}
+
+		let state = self.resolver.status(origin, endpoint).ok()?;
+		Some(Ok((origin.to_string(), endpoint.to_string(), state)))
+	}
+}
+
 /// The status of a ticket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TicketState {
@@ -648,4 +787,53 @@ pub enum TicketState {
 	Open,
 	/// The ticket is closed.
 	Closed,
+}
+
+impl TryFrom<&str> for TicketState {
+	type Error = Error;
+
+	fn try_from(value: &str) -> Result<Self> {
+		match value {
+			"open" => Ok(Self::Open),
+			"closed" => Ok(Self::Closed),
+			_ => Err(Error::Malformed(value.to_string())),
+		}
+	}
+}
+
+impl TryFrom<String> for TicketState {
+	type Error = Error;
+
+	#[inline]
+	fn try_from(value: String) -> Result<Self> {
+		// Just forward to the &str implementation.
+		Self::try_from(value.as_str())
+	}
+}
+
+/// Dependency resolvers take an origin slug and endpoint string
+/// and resolve the current status of the dependency.
+///
+/// A general purpose registry is implemented in [`DependencyRegistry`].
+pub trait DependencyResolver {
+	/// Resolves the status of a dependency given its origin and endpoint.
+	fn status(&self, slug: &str, endpoint: &str) -> Result<DependencyStatus>;
+}
+
+/// The state of a dependency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DependencyStatus {
+	/// The dependency is still pending
+	Pending,
+	/// The dependency has been completed
+	Complete,
+}
+
+impl From<TicketState> for DependencyStatus {
+	fn from(state: TicketState) -> Self {
+		match state {
+			TicketState::Open => Self::Pending,
+			TicketState::Closed => Self::Complete,
+		}
+	}
 }

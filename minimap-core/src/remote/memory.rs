@@ -347,7 +347,8 @@ mod tests {
 	use super::*;
 
 	macro_rules! create_test_remote {
-		() => {
+		// We don't care about suffixes, so we just ignore them.
+		($($suffix:literal)?) => {
 			MemoryRemote::new("Max Mustermann", "max@example.com")
 		};
 	}
