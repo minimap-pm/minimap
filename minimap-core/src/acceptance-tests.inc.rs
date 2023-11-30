@@ -281,6 +281,13 @@ fn test_ticket() {
 
 	// make sure that we didn't overwrite ticket 1 or something
 	assert_eq!(ticket.title().unwrap().unwrap().message(), "test title");
+
+	// delete the ticket and make sure it's unable to be fetched
+	// by either the workspace (via a slug) or the project (via an ID)
+	project.delete_ticket(1).unwrap().unwrap();
+	assert!(project.delete_ticket(1).unwrap().is_err());
+	assert!(matches!(project.ticket(1), Err(Error::NotFound(_, _))));
+	assert!(matches!(workspace.ticket("test-1"), Err(Error::NotFound(_, _))));
 }
 
 #[test]

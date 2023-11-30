@@ -609,6 +609,28 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 				},
 			)
 	}
+
+	/// **Soft-deletes** a ticket.
+	///
+	/// The ticket will no longer be valid and cannot be retrieved,
+	/// but will remain in the history of the project.
+	///
+	/// Returns `Ok(removed_record)` with the newly created set delete
+	/// record, `Err(Some(record))` with the deletion record if the
+	/// ticket was already deleted, or `Err(None)` if the ticket never
+	/// existed.
+	pub fn delete_ticket(
+		&self,
+		id: u64,
+	) -> Result<std::result::Result<R::Record, Option<R::Record>>> {
+		self.workspace
+			.remote
+			.set_del(&format!("{}/tickets", self.path), &id.to_string())
+			.map(|result| match result {
+				Ok((removed, _)) => Ok(removed),
+				Err(record) => Err(record),
+			})
+	}
 }
 
 /// A Minimap ticket. Tickets are a collection of comments,
