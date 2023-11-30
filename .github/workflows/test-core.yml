@@ -46,3 +46,5 @@ jobs:
         run: cargo clippy -p minimap-core --tests --release -- -D clippy::all
       - name: Test
         run: cargo test -p minimap-core
+      - name: Doc
+        run: cargo doc -p minimap-core
