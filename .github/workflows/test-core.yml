@@ -30,9 +30,8 @@ jobs:
           components: rustfmt, clippy, llvm-tools-preview
           default: true
       - name: Cache build artifacts
-        uses: actions/cache@v3
+        uses: swatinem/rust-cache@v2
         with:
-          path: target/
           key: minimap-core-target
       - name: Lint
         run: cargo fmt --all --check
