@@ -8,7 +8,7 @@ import systemTheme from 'minimap/js/util/s-theme.mjs';
 import Root from 'minimap/js/module/Root.mjs';
 import ErrorView from 'minimap/js/module/ErrorView.mjs';
 
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api';
 
 import './reset.css';
 import './global.css';
@@ -19,7 +19,7 @@ const XFormString = {
 	parse: v => v ?? ''
 };
 
-S.root(() => {
+export const initMinimap = () => S.root(() => {
 	const Minimap = {
 		errorMessage: S.value(),
 		theme: localSignal('minimap.theme', {
@@ -60,4 +60,16 @@ S.root(() => {
 
 	// TODO DEBUG: test tauri API
 	invoke('hello').then(r => console.log('hello():', r));
+	// TODO DEBUG: open a workspace
+	const uri = 'git@github.com:Qix-/test-minimap.git';
+	invoke('workspace_open', { uri })
+		.then(r => {
+			console.log('workspace_open():', r);
+			invoke('project_create', { uri, slug: 'test-project' })
+				.then(r => console.log('project_create():', r))
+				.catch(err => console.error(err));
+		})
+		.catch(err => console.error(err));
 });
+
+setTimeout(initMinimap, 1000);

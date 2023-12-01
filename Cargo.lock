@@ -1654,6 +1654,7 @@ dependencies = [
  "git2",
  "indexmap 2.1.0",
  "rusty-hook",
+ "serde",
  "sha2",
  "thiserror",
 ]

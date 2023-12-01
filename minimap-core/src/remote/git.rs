@@ -632,3 +632,20 @@ mod test {
 		assert!(found)
 	}
 }
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for GitRecord<'_> {
+	fn serialize<S: serde::Serializer>(
+		&self,
+		serializer: S,
+	) -> std::result::Result<S::Ok, S::Error> {
+		use serde::ser::SerializeStruct;
+		let mut state = serializer.serialize_struct("GitRecord", 5)?;
+		state.serialize_field("id", &Record::id(self))?;
+		state.serialize_field("author", &Record::author(self))?;
+		state.serialize_field("email", &Record::email(self))?;
+		state.serialize_field("message", &Record::message(self))?;
+		state.serialize_field("timestamp", &Record::timestamp(self))?;
+		state.end()
+	}
+}

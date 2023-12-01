@@ -20,6 +20,7 @@ use std::{collections::HashSet, hash::Hash, marker::PhantomData};
 
 /// The error type for all Minimap operations.
 #[derive(Debug, thiserror::Error)]
+
 pub enum Error {
 	/// An error occurred while interacting with the Git repository.
 	/// This is mostly unexpected, as Minimap tries to convert expected
@@ -69,6 +70,20 @@ pub enum Error {
 	/// The project slug is malformed
 	#[error("malformed project slug: {0}")]
 	MalformedProjectSlug(String),
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Error {
+	fn serialize<S>(&self, serializer: S) -> std::prelude::v1::Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		// Serializes to an object with a single `error` field.
+		use serde::ser::SerializeStruct;
+		let mut state = serializer.serialize_struct("Error", 1)?;
+		state.serialize_field("error", &self.to_string())?;
+		state.end()
+	}
 }
 
 /// The result type for all Minimap operations.
