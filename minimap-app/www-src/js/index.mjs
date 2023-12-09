@@ -59,5 +59,24 @@ S.root(() => {
 	document.body.prepend(<Root view={currentView} fadeTime={150} />);
 
 	// TODO DEBUG: test tauri API
-	invoke('hello').then(r => console.log('hello():', r));
+	const remote = 'git@github.com:Qix-/test-minimap.git';
+	let workspace;
+	invoke('workspace_open', { remote })
+		.then(ws => {
+			workspace = ws;
+			console.log('workspace_open():', workspace);
+			return invoke('workspace_name', {workspace});
+		})
+		.then(name => {
+			console.log('workspace_name():', name);
+			return invoke('workspace_set_name', {workspace, name: 'test-minimap'});
+		})
+		.then(e => {
+			console.log('workspace_set_name():', e);
+			return invoke('workspace_name', {workspace});
+		})
+		.then(name => {
+			console.log('workspace_name():', name);
+		})
+		.catch(err => console.error(err));
 });
