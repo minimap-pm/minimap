@@ -1,7 +1,7 @@
 [hooks]
 # TODO(qix-): Change this to exclude the minimap-app crate and otherwise use --all
 # TODO(qix-): once rust-lang/rust-clippy#9555 is resolved.
-pre-commit = "cargo fmt --all -- --check && cargo clippy -p minimap-core -- -D clippy::all"
+pre-commit = "cargo fmt --all -- --check && cargo clippy -p minimap-core -- -D clippy::all && cd minimap-app && npm run lint"
 
 [logging]
 verbose = true
