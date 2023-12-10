@@ -506,6 +506,12 @@ pub(crate) enum Error {
 	Minimap(#[from] minimap_core::Error),
 	#[error("no such workspace: {0:?}")]
 	NoSuchWorkspace(WorkspaceKey),
+	#[error("toml parsing error: {0}")]
+	TomlDe(#[from] toml::de::Error),
+	#[error("toml serialization error: {0}")]
+	TomlSer(#[from] toml::ser::Error),
+	#[error("no configuration directory found")]
+	NoConfigDir,
 }
 
 impl serde::ser::Serialize for Error {
@@ -627,12 +633,47 @@ fn git_workspace_open(
 	Ok(key)
 }
 
+fn get_config_path() -> Result<std::path::PathBuf> {
+	let config_path = dirs::config_dir()
+		.ok_or(Error::NoConfigDir)?
+		.join("minimap");
+	std::fs::create_dir_all(&config_path).map_err(minimap_core::Error::Io)?;
+	Ok(config_path.join("config.toml"))
+}
+
+#[tauri::command]
+fn config_load() -> Result<toml::Value> {
+	let config_path = get_config_path()?;
+	let config = match std::fs::read_to_string(&config_path) {
+		Ok(config) => config,
+		Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+			let config = toml::Value::Table(toml::map::Map::new());
+			let config = toml::to_string(&config)?;
+			std::fs::write(&config_path, &config).map_err(minimap_core::Error::Io)?;
+			config
+		}
+		Err(e) => return Err(minimap_core::Error::Io(e).into()),
+	};
+	let config = toml::from_str(&config)?;
+	Ok(config)
+}
+
+#[tauri::command]
+fn config_store(config: toml::Value) -> Result<()> {
+	let config_path = get_config_path()?;
+	let config = toml::to_string(&config)?;
+	std::fs::write(config_path, config).map_err(minimap_core::Error::Io)?;
+	Ok(())
+}
+
 fn main() {
 	tauri::Builder::default()
 		.manage(WorkspaceRegistry::default())
 		.manage(GitWorkspaceRegistry::default())
 		.manage::<Mutex<Option<WorkspaceKey>>>(Mutex::default())
 		.invoke_handler(tauri::generate_handler![
+			config_store,
+			config_load,
 			mem_workspace_open,
 			mem_workspace_name,
 			mem_workspace_set_name,
