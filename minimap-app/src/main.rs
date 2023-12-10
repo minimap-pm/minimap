@@ -528,7 +528,6 @@ struct GitWorkspaceRegistry<'a> {
 }
 
 impl<'a> GitWorkspaceRegistry<'a> {
-	/// Locks (but does NOT unwrap, so as to return a Result) the inner slotmap.
 	fn lock(
 		&self,
 	) -> std::result::Result<
