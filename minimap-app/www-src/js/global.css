@@ -61,7 +61,7 @@ body {
 	scrollbar-color: var(--mm-scrollbar, var(--mm-border)) transparent;
 	scrollbar-width: thin;
 	font-family: 'Inter', sans-serif;
-	font-size: 0.9rem;
+	font-size: 1rem;
 	font-weight: 500;
 }
 

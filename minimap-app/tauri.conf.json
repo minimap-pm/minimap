@@ -2,7 +2,7 @@
 	"$schema": "node_modules/@tauri-apps/cli/schema.json",
 	"build": {
 		"beforeBuildCommand": "npm run build",
-		"beforeDevCommand": "npm run dev",
+		"beforeDevCommand": "npm run tauri:icon && npm run build && npm run dev",
 		"devPath": "http://localhost:3891",
 		"distDir": "build"
 	},

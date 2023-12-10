@@ -1,4 +1,5 @@
 import S from 's-js';
+import Sarray from 's-array';
 import { invoke } from '@tauri-apps/api/tauri';
 
 const currentConfig = S.value();
@@ -11,8 +12,8 @@ export async function save() {
 	await invoke('config_store', { config: S.sample(currentConfig) });
 }
 
-export function signal(name, init) {
-	const v = S.value(S.sample(currentConfig)[name] ?? init);
+function setup(name, init, fn) {
+	const v = fn(S.sample(currentConfig)[name] ?? init);
 	S.on(
 		currentConfig,
 		() => {
@@ -28,6 +29,18 @@ export function signal(name, init) {
 		save();
 	});
 	return v;
+}
+
+export function value(name, init) {
+	return setup(name, init, S.value);
+}
+
+export function data(name, init) {
+	return setup(name, init, S.data);
+}
+
+export function array(name, init) {
+	return setup(name, init, Sarray);
 }
 
 await refresh();

@@ -1,0 +1,56 @@
+.root {
+	border: 1px solid var(--mm-border);
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+
+.root > h1 {
+	text-transform: uppercase;
+	font-size: 1.5rem;
+	font-weight: 700;
+	padding: 1rem;
+	box-sizing: border-box;
+	background: var(--mm-text);
+	color: var(--mm-bg);
+}
+
+.workspaceList {
+	display: flex;
+	flex-direction: column;
+	padding: 0.5rem;
+}
+
+.workspace {
+	display: flex;
+	flex-direction: column;
+	padding: 1rem 0.5rem;
+	box-sizing: border-box;
+	border: none;
+	background: transparent;
+	cursor: pointer;
+	color: var(--mm-text);
+}
+
+.workspace:not(:last-child) {
+	border-bottom: 1px solid var(--mm-border);
+}
+
+.workspace:hover {
+	background: var(--mm-invert-bg, var(--mm-accent));
+	color: var(--mm-invert, var(--mm-text));
+}
+
+.workspaceType {
+	font-size: 1.25rem;
+	font-weight: 700;
+	margin-bottom: 0.5rem;
+}
+
+.property > strong {
+	display: inline-block;
+	width: 9ch;
+	font-weight: 900;
+	text-align: left;
+}
