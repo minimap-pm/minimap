@@ -122,7 +122,17 @@ class Project {
 	}
 }
 
-class Workspace {
+export class Workspace {
+	static async open_git(remote) {
+		const id = await invoke('git_workspace_open', { remote });
+		return new GitWorkspace(id, 'git');
+	}
+
+	static async open_temporary(author, email) {
+		const id = await invoke('mem_workspace_open', { author, email });
+		return new Workspace(id, 'mem');
+	}
+
 	constructor(id, prefix) {
 		this._id = id;
 		this._prefix = prefix;
@@ -170,27 +180,5 @@ class Workspace {
 
 	getTicket(ticket) {
 		return new Workspace(this._id, ticket, this._prefix);
-	}
-}
-
-export class MemoryWorkspace extends Workspace {
-	constructor(id) {
-		super(id, 'mem');
-	}
-
-	static async open(author, email) {
-		const id = await invoke('mem_workspace_open', { author, email });
-		return new MemoryWorkspace(id);
-	}
-}
-
-export class GitWorkspace extends Workspace {
-	constructor(id) {
-		super(id, 'git');
-	}
-
-	static async open(remote) {
-		const id = await invoke('git_workspace_open', { remote });
-		return new GitWorkspace(id);
 	}
 }

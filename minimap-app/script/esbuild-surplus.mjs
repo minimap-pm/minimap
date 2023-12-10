@@ -1,6 +1,6 @@
 import { promises as fsp } from 'fs';
 
-import acorn from 'acorn';
+import * as acorn from 'acorn';
 import acornJsx from 'acorn-jsx';
 import * as acornWalk from 'acorn-walk';
 import { extend as acornWalkJsx } from 'acorn-jsx-walk';

@@ -57,7 +57,7 @@ const makeJSBundle = ({ main, output, css = false, surplus = false }) =>
 			esbuild({
 				entryPoints: [main],
 				outfile: output,
-				format: 'iife',
+				format: 'esm',
 				sourcemap: dev && 'inline',
 				minify: !dev,
 				plugins: [
