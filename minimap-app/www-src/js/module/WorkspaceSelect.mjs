@@ -2,6 +2,8 @@ import * as Surplus from 'surplus';
 
 import I from 'minimap/js/util/i18n.mjs';
 
+import Logo from 'minimap/js/component/Logo.mjs';
+
 import * as C from './WorkspaceSelect.css';
 
 const TYPE_TAGS = {
@@ -25,16 +27,21 @@ const TYPE_TAGS = {
 export default ({ savedWorkspaces }) => {
 	return (
 		<div className={C.root}>
-			<h1>{I`Select a workspace`}</h1>
-			<div className={C.workspaceList}>
-				{savedWorkspaces.map(workspace => {
-					const TypeTag = TYPE_TAGS[workspace.type];
-					return (
-						<button className={C.workspace}>
-							<TypeTag {...workspace} />
-						</button>
-					);
-				})}
+			<div className={C.logoContainer}>
+				<Logo />
+			</div>
+			<div className={C.listContainer}>
+				<h1>{I`Select a workspace`}</h1>
+				<div className={C.workspaceList}>
+					{savedWorkspaces.map(workspace => {
+						const TypeTag = TYPE_TAGS[workspace.type];
+						return (
+							<button className={C.workspace}>
+								<TypeTag {...workspace} />
+							</button>
+						);
+					})}
+				</div>
 			</div>
 		</div>
 	);
