@@ -125,10 +125,10 @@ class Project {
 export class Workspace {
 	static async open_git(remote) {
 		const id = await invoke('git_workspace_open', { remote });
-		return new GitWorkspace(id, 'git');
+		return new Workspace(id, 'git');
 	}
 
-	static async open_temporary(author, email) {
+	static async open_mem(author, email) {
 		const id = await invoke('mem_workspace_open', { author, email });
 		return new Workspace(id, 'mem');
 	}

@@ -24,7 +24,7 @@ const TYPE_TAGS = {
 	]
 };
 
-export default ({ savedWorkspaces }) => {
+export default ({ savedWorkspaces, currentWorkspace }) => {
 	return (
 		<div className={C.root}>
 			<div className={C.logoContainer}>
@@ -36,7 +36,10 @@ export default ({ savedWorkspaces }) => {
 					{savedWorkspaces.map(workspace => {
 						const TypeTag = TYPE_TAGS[workspace.type];
 						return (
-							<button className={C.workspace}>
+							<button
+								className={C.workspace}
+								onClick={() => currentWorkspace(workspace)}
+							>
 								<TypeTag {...workspace} />
 							</button>
 						);

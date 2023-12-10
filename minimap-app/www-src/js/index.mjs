@@ -8,6 +8,9 @@ import * as configSignal from 'minimap/js/util/tauri-config-signal.mjs';
 import Root from 'minimap/js/module/Root.mjs';
 import ErrorView from 'minimap/js/module/ErrorView.mjs';
 import WorkspaceSelect from 'minimap/js/module/WorkspaceSelect.mjs';
+import Loading from 'minimap/js/module/Loading.mjs';
+
+import { Workspace } from 'minimap/js/api.mjs';
 
 import './reset.css';
 import './global.css';
@@ -21,16 +24,15 @@ S.root(() => {
 		savedWorkspaces: configSignal.array('workspaces', [
 			{
 				type: 'git',
-				remote:
-					'file:///C:/Users/Anonymous/AppData/Roaming/minimap/test-repo'
+				remote: 'git@github.com:Qix-/test-minimap.git'
 			},
 			{ type: 'mem', author: 'Max Mustermann', email: 'max@example.com' },
 			{
 				type: 'git',
-				remote:
-					'file:///C:/Users/Anonymous/AppData/Roaming/minimap/test-repo'
+				remote: 'file:///Z:/tmp/minimap-test-repo'
 			}
-		])
+		]),
+		currentWorkspace: S.data()
 	};
 
 	if (typeof window !== 'undefined') window.Minimap = Minimap;
@@ -53,7 +55,61 @@ S.root(() => {
 	const currentView = S(() => {
 		if (Minimap.errorMessage()) return <ErrorView {...Minimap} />;
 
+		const currentWorkspace = Minimap.currentWorkspace();
+		if (currentWorkspace && currentWorkspace.workspace)
+			return () => (
+				<div>
+					workspace view:{' '}
+					{JSON.stringify({
+						...currentWorkspace,
+						workspace: undefined
+					})}
+				</div>
+			);
+		if (currentWorkspace && !currentWorkspace.workspace)
+			return () => <Loading>{I`loading workspace...`}</Loading>;
+
 		return () => <WorkspaceSelect {...Minimap} />;
+	});
+
+	// React to workspace loads
+	S(async () => {
+		const currentWorkspace = Minimap.currentWorkspace();
+		if (!currentWorkspace) return;
+		if (currentWorkspace.workspace) return;
+
+		switch (currentWorkspace.type) {
+			case 'git':
+				if (!currentWorkspace.remote) {
+					console.error(
+						"missing required property 'remote' for workspace type 'git':",
+						currentWorkspace
+					);
+					Minimap.currentWorkspace(undefined);
+					break;
+				}
+
+				currentWorkspace.workspace = await Workspace.open_git(
+					currentWorkspace.remote
+				);
+
+				Minimap.currentWorkspace(currentWorkspace);
+
+				break;
+			case 'mem':
+				currentWorkspace.workspace = await Workspace.open_mem(
+					currentWorkspace.author ?? '<unknown author>',
+					currentWorkspace.email ?? '<unknown email>'
+				);
+
+				Minimap.currentWorkspace(currentWorkspace);
+
+				break;
+			default:
+				console.error('unknown workspace type:', currentWorkspace.type);
+				Minimap.currentWorkspace(undefined);
+				break;
+		}
 	});
 
 	// Attach!
