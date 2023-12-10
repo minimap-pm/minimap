@@ -344,6 +344,11 @@ where
 		})
 	}
 
+	/// Lists the project slugs that exist in the workspace
+	pub fn projects(&'a self) -> Result<IndexSet<R::Record>> {
+		self.remote.set_get_all("meta/projects")
+	}
+
 	/// Creates a project with the given slug.
 	/// If the project already exists, returns `Ok(Err(record))` with the
 	/// set record of the existing project.
@@ -654,6 +659,11 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 		self.id
 	}
 
+	/// Gets this ticket's record
+	pub fn record(&self) -> Result<Option<R::Record>> {
+		self.workspace.remote.latest(&self.path)
+	}
+
 	/// Gets the title of the ticket.
 	pub fn title(&self) -> Result<Option<R::Record>> {
 		self.workspace
@@ -695,12 +705,26 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	}
 
 	/// Removes an attachment from the ticket.
-	pub fn remote_attachment(&self, name: &str) -> Result<R::Record> {
-		self.workspace
+	/// If the attachment existed, returns `Ok(removed_record)`. If it did not,
+	/// returns `Err(Some(record))` with the record of the latest removal, or
+	/// `Err(None)` if the attachment never existed.
+	pub fn remove_attachment(
+		&self,
+		name: &str,
+	) -> Result<std::result::Result<R::Record, Option<R::Record>>> {
+		let attachment_path = format!("{}/attachment", self.path);
+
+		match self.workspace.remote.set_find(&attachment_path, name)? {
+			Ok(_) => {}
+			Err(record) => return Ok(Err(record)),
+		}
+
+		Ok(Ok(self
+			.workspace
 			.remote
-			.record_builder(&format!("{}/attachment", self.path))
+			.record_builder(&attachment_path)
 			.remove_attachment(name)?
-			.commit(&format!("-{}", name))
+			.commit(&format!("-{}", name))?))
 	}
 
 	/// Gets an attachment from the ticket.
@@ -807,17 +831,17 @@ impl<'a, R: Remote<'a>> Ticket<'a, R> {
 	/// Lists all dependencies for the ticket.
 	///
 	/// See [`Ticket::add_dependency`] for more information on dependencies.
-	pub fn dependencies(&self) -> Result<IndexSet<(String, String)>> {
+	pub fn dependencies(&self) -> Result<Vec<(String, String, R::Record)>> {
 		self.workspace
 			.remote
-			.set_get_all(&format!("{}/dependencies", self.path))?
-			.into_iter()
+			.walk_set_present(&format!("{}/dependencies", self.path))?
 			.map(|r| {
+				let r = r?;
 				let message = r.message();
 				let (origin, endpoint) = message
 					.split_once('@')
 					.ok_or_else(|| Error::Malformed(format!("{}/dependencies", self.path)))?;
-				Ok((origin.to_string(), endpoint.to_string()))
+				Ok((origin.to_string(), endpoint.to_string(), r))
 			})
 			.collect()
 	}
@@ -906,6 +930,15 @@ impl TryFrom<String> for TicketState {
 	fn try_from(value: String) -> Result<Self> {
 		// Just forward to the &str implementation.
 		Self::try_from(value.as_str())
+	}
+}
+
+impl ToString for TicketState {
+	fn to_string(&self) -> String {
+		match self {
+			Self::Open => "open".to_string(),
+			Self::Closed => "closed".to_string(),
+		}
 	}
 }
 

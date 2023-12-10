@@ -251,6 +251,18 @@ fn test_project() {
 
 	workspace.create_project("test").unwrap().unwrap();
 	assert!(workspace.create_project("test").unwrap().is_err());
+
+	let collected = workspace.projects().unwrap();
+	assert_eq!(collected.len(), 1);
+	assert_eq!(collected[0].message(), "test");
+
+	let second_project = workspace.create_project("test2");
+	assert!(second_project.is_ok());
+
+	let collected = workspace.projects().unwrap();
+	assert_eq!(collected.len(), 2);
+	assert_eq!(collected[0].message(), "test");
+	assert_eq!(collected[1].message(), "test2");
 }
 
 #[test]
@@ -445,7 +457,7 @@ fn test_ticket_dependency() {
 
 	// now go through the dependencies and make sure all the ones we didn't remove
 	// are still there.
-	let deps = ticket.dependencies().unwrap();
+	let deps = ticket.dependencies().unwrap().into_iter().map(|(a, b, _)| (a, b)).collect::<Vec<_>>();
 	assert_eq!(deps.len(), 2);
 	assert!(deps.contains(&("_".to_string(), "foo-1".to_string())));
 	assert!(deps.contains(&("ext".to_string(), "foo-1".to_string())));
@@ -463,7 +475,7 @@ fn test_self_dependencies() {
 
 	ticket.add_dependency("_", "test-2").unwrap();
 
-	let deps = ticket.dependencies().unwrap();
+	let deps = ticket.dependencies().unwrap().into_iter().map(|(a, b, _)| (a, b)).collect::<Vec<_>>();
 	assert_eq!(deps.len(), 1);
 	assert!(deps.contains(&("_".to_string(), "test-2".to_string())));
 
