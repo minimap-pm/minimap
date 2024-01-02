@@ -10,6 +10,11 @@
 pub(crate) mod deps;
 pub(crate) mod remote;
 
+/// Re-exports the version of git2 used by Minimap
+pub mod git2 {
+	pub use git2::*;
+}
+
 pub use deps::*;
 #[cfg(feature = "git")]
 pub use remote::git::*;
@@ -422,7 +427,7 @@ pub trait Record: Clone + Sized + Hash + PartialEq + Eq + std::fmt::Debug {
 	/// The message of the record. Must be character-for-character identical
 	/// to the message that was original created.
 	fn message(&self) -> String;
-	/// Gets the unix timestamp of the record.
+	/// Gets the unix timestamp of the record in seconds.
 	fn timestamp(&self) -> i64;
 	/// Gets an attachment by its name.
 	fn attachment(&self, name: &str) -> Result<Option<Vec<u8>>>;

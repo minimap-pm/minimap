@@ -3,7 +3,15 @@ version = "0.1.0"
 
 [workspace]
 resolver = "2"
+default-members = [
+	"minimap-cli"
+]
 members = [
 	"minimap-app",
-	"minimap-core"
+	"minimap-core",
+	"minimap-cli",
 ]
+
+[workspace.dependencies]
+minimap-core = { path = "minimap-core" }
+thiserror = "1.0.50"

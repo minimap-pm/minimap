@@ -1,0 +1,12 @@
+[package]
+name = "minimap-cli"
+version = { workspace = true }
+edition = "2021"
+publish = false
+
+[dependencies]
+minimap-core.workspace = true
+thiserror.workspace = true
+chrono = "0.4.31"
+toml = "0.8.8"
+serde = { version = "1.0.193", features = ["derive"] }
