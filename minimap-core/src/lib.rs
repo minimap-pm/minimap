@@ -488,6 +488,18 @@ impl<'a, R: Remote<'a>> Project<'a, R> {
 		&self.slug
 	}
 
+	/// Gets the record associated with the project.
+	pub fn record(&self) -> Result<Option<R::Record>> {
+		match self
+			.workspace
+			.remote
+			.set_find("meta/projects", &self.slug)?
+		{
+			Ok(record) => Ok(Some(record)),
+			Err(_) => Ok(None),
+		}
+	}
+
 	/// Gets the name of the workspace.
 	pub fn name(&self) -> Result<Option<R::Record>> {
 		self.workspace

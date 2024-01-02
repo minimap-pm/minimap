@@ -102,6 +102,7 @@ fn pmain() -> i32 {
 
 	let result = match subcommand.as_ref().map(|s| s.as_str()) {
 		Some("workspace") => cmd_workspace(arg0.as_ref().map(|s| s.as_str()), &args),
+		Some("project") => cmd_project(arg0.as_ref().map(|s| s.as_str()), &args),
 		Some(unknown) => {
 			eprintln!("error: unknown subcommand `{}`\n", unknown);
 			Ok(show_usage(arg0))
@@ -391,6 +392,182 @@ fn cmd_workspace_description(arg0: Option<&str>, args: &[String]) -> Result<i32>
 			print_record(&record, verbose);
 			Ok(0)
 		} else {
+			Ok(1)
+		}
+	}
+}
+
+fn cmd_project(arg0: Option<&str>, args: &[String]) -> Result<i32> {
+	let subcommand = args.iter().next();
+
+	match subcommand.as_ref().map(|s| s.as_str()) {
+		Some("create") => cmd_project_create(arg0, &args[1..]),
+		Some("--help") | None => {
+			eprintln!(
+				concat!(
+					"usage: {arg0} project <command> [<args>]\n",
+					"\n",
+					"Minimap project commands.\n",
+					"\n",
+					"Available commands:\n",
+					"    create    Creates a new project\n",
+					"    --help    Prints this help message",
+				),
+				arg0 = arg0.unwrap_or("minimap")
+			);
+			Ok(2)
+		}
+		Some(unknown) if unknown.starts_with('-') => {
+			eprintln!("error: unknown 'project' argument `{}`\n", unknown);
+			Ok(2)
+		}
+		Some(unknown) => {
+			eprintln!("error: unknown 'project' subcommand `{}`\n", unknown);
+			Ok(2)
+		}
+	}
+}
+
+fn cmd_project_create(arg0: Option<&str>, args: &[String]) -> Result<i32> {
+	let mut args = args.into_iter();
+	let mut verbose = false; // -v or --verbose
+	let mut allow_existing = false; // -e or --allow-existing
+	let mut allow_lowercase = false; // -l or --allow-lowercase
+	let mut slug = None; // one and only positional
+	let mut description = None; // -d or --description <description>
+	let mut name = None; // -n or --name <name>
+
+	while let Some(arg) = args.next() {
+		match arg.as_str() {
+			"--help" => {
+				eprintln!(
+					concat!(
+						"usage: {arg0} project create [-vel] [-d <description>] [-n <name>] <slug>\n",
+						"\n",
+						"Creates a new project.\n",
+						"\n",
+						"Options:\n",
+						"    -v, --verbose         Prints all record information along with the project\n",
+						"    -e, --allow-existing  Allow the project to be created if it already exists\n",
+						"    -l, --allow-lowercase Allow the project slug to contain lowercase letters\n",
+						"    -d, --description     Sets the project description\n",
+						"    -n, --name            Sets the project name\n",
+						"    --help                Prints this help message",
+					),
+					arg0 = arg0.unwrap_or("minimap")
+				);
+				return Ok(2);
+			}
+			"--verbose" | "-v" => {
+				verbose = true;
+			}
+			"--allow-existing" | "-e" => {
+				allow_existing = true;
+			}
+			"--allow-lowercase" | "-l" => {
+				allow_lowercase = true;
+			}
+			"--description" | "-d" => {
+				if description.is_some() {
+					eprintln!(
+						"error: `--description` may only be specified once\nusage: minimap project create --help"
+					);
+					return Ok(2);
+				}
+
+				if let Some(arg) = args.next()
+					&& !arg.starts_with('-')
+				{
+					description = Some(arg.to_string());
+				} else {
+					eprintln!(
+						"error: missing argument to `--description`\nusage: minimap project create --help"
+					);
+					return Ok(2);
+				}
+			}
+			"--name" | "-n" => {
+				if name.is_some() {
+					eprintln!(
+						"error: `--name` may only be specified once\nusage: minimap project create --help"
+					);
+					return Ok(2);
+				}
+
+				if let Some(arg) = args.next()
+					&& !arg.starts_with('-')
+				{
+					name = Some(arg.to_string());
+				} else {
+					eprintln!(
+						"error: missing argument to `--name`\nusage: minimap project create --help"
+					);
+					return Ok(2);
+				}
+			}
+			arg if arg.starts_with('-') => {
+				eprintln!("error: unknown argument `{}`\n", arg);
+				return Ok(2);
+			}
+			arg => {
+				if slug.is_some() {
+					eprintln!("error: too many arguments\nusage: minimap project create --help");
+					return Ok(2);
+				}
+
+				slug = Some(arg.to_string());
+			}
+		}
+	}
+
+	let slug = match slug {
+		Some(slug) => slug,
+		None => {
+			eprintln!("error: missing argument `slug`\nusage: minimap project create --help");
+			return Ok(2);
+		}
+	};
+
+	if !allow_lowercase && slug.chars().any(|c| c.is_ascii_lowercase()) {
+		eprintln!(
+			"error: slug contains lowercase letters: {slug}\nusage: minimap project create --help"
+		);
+		return Ok(2);
+	}
+
+	if slug.chars().any(|c| !c.is_ascii_alphanumeric()) {
+		eprintln!(
+			"error: slug contains invalid characters: {slug}\nusage: minimap project create --help"
+		);
+		return Ok(2);
+	}
+
+	let workspace = open_workspace()?;
+	let project = workspace.create_project(&slug)?;
+
+	match project {
+		Ok(project) => {
+			if verbose {
+				print_record(&project.record()?.unwrap(), true);
+			}
+
+			Ok(0)
+		}
+		Err(old_record) if allow_existing => {
+			if verbose {
+				print_record(&old_record, true);
+			}
+
+			Ok(0)
+		}
+		Err(old_record) => {
+			eprintln!("error: project already exists: {slug}", slug = slug);
+
+			if verbose {
+				eprintln!("\n");
+				print_record(&old_record, true);
+			}
+
 			Ok(1)
 		}
 	}
