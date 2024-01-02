@@ -14,4 +14,4 @@ members = [
 
 [workspace.dependencies]
 minimap-core = { path = "minimap-core" }
-thiserror = "1.0.50"
+thiserror = "1.0.53"
