@@ -210,6 +210,7 @@ fn cmd_workspace(arg0: Option<&str>, args: &[String]) -> Result<i32> {
 
 	match subcommand.as_ref().map(|s| s.as_str()) {
 		Some("name") => cmd_workspace_name(arg0, &args[1..]),
+		Some("description") => cmd_workspace_description(arg0, &args[1..]),
 		Some("--help") | None => {
 			eprintln!(
 				concat!(
@@ -218,8 +219,9 @@ fn cmd_workspace(arg0: Option<&str>, args: &[String]) -> Result<i32> {
 					"Minimap workspace metadata commands.\n",
 					"\n",
 					"Available commands:\n",
-					"    name    Gets or sets the workspace name\n",
-					"    --help  Prints this help message",
+					"    name           Gets or sets the workspace name\n",
+					"    description    Gets or sets the workspace description\n",
+					"    --help         Prints this help message",
 				),
 				arg0 = arg0.unwrap_or("minimap")
 			);
@@ -306,6 +308,86 @@ fn cmd_workspace_name(arg0: Option<&str>, args: &[String]) -> Result<i32> {
 		Ok(0)
 	} else {
 		if let Some(record) = workspace.name()? {
+			print_record(&record, verbose);
+			Ok(0)
+		} else {
+			Ok(1)
+		}
+	}
+}
+
+fn cmd_workspace_description(arg0: Option<&str>, args: &[String]) -> Result<i32> {
+	let mut write_description = None;
+	let mut verbose = false;
+	let mut idempotent = true;
+
+	for arg in args {
+		match arg.as_str() {
+			"--help" => {
+				eprintln!(
+					concat!(
+						"usage: {arg0} workspace description [-vf] [<new_description>]\n",
+						"\n",
+						"Gets or sets the workspace description.\n",
+						"\n",
+						"Returns non-zero if the workspace description is not set and no\n",
+						"new description is provided.\n",
+						"\n",
+						"Options:\n",
+						"    -v, --verbose     Prints all record information along with the description\n",
+						"    -f, --force       Perform a commit even if the last committed description\n",
+						"                      is the same as the new description\n",
+						"    --help            Prints this help message",
+					),
+					arg0 = arg0.unwrap_or("minimap")
+				);
+				return Ok(2);
+			}
+			"--verbose" | "-v" => {
+				verbose = true;
+			}
+			"--force" | "-f" => {
+				idempotent = false;
+			}
+			arg if arg.starts_with('-') => {
+				eprintln!("error: unknown argument `{}`\n", arg);
+				return Ok(2);
+			}
+			description => {
+				if write_description.is_some() {
+					eprintln!(
+						"error: too many arguments\nusage: minimap workspace description --help"
+					);
+					return Ok(2);
+				}
+
+				write_description = Some(description);
+			}
+		}
+	}
+
+	let workspace = open_workspace()?;
+
+	if let Some(description) = write_description {
+		let record = if idempotent {
+			if let Some(record) = workspace.description()?
+				&& record.message() == description
+			{
+				record
+			} else {
+				workspace.set_description(description)?
+			}
+		} else {
+			workspace.set_description(description)?
+		};
+
+		if verbose {
+			print_record(&record, true);
+		}
+
+		Ok(0)
+	} else {
+		if let Some(record) = workspace.description()? {
 			print_record(&record, verbose);
 			Ok(0)
 		} else {
