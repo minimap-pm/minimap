@@ -9,4 +9,4 @@ minimap-core.workspace = true
 thiserror.workspace = true
 chrono = "0.4.31"
 toml = "0.8.8"
-serde = { version = "1.0.193", features = ["derive"] }
+serde = { version = "1.0.196", features = ["derive"] }
